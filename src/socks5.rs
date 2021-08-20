@@ -1,8 +1,26 @@
-use std::{convert::TryInto, io::{Error, ErrorKind}, net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6, ToSocketAddrs}};
+use std::{convert::TryFrom, io::{Error, ErrorKind}, net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6, ToSocketAddrs}};
 
 use tokio::{io::AsyncReadExt, net::TcpStream};
 
+use crate::error::Socks5Error;
+
 const SOCKS5_VERSION: u8 = 0x05;
+
+pub enum MethodType {
+    NoAuth,
+    UserPass,
+}
+
+impl TryFrom<u8> for MethodType {
+    type Error = Socks5Error;
+    fn try_from(orig: u8) -> Result<Self, Socks5Error> {
+        match orig {
+            0 => Ok(MethodType::NoAuth),
+            2 => Ok(MethodType::UserPass),
+            _ => Err(Socks5Error::UnsupportedMethodType)
+        }
+    }
+}
 
 #[derive(Clone, Copy)]
 #[derive(Debug)]
@@ -50,7 +68,6 @@ impl From<u8> for Command {
         }
     }
 }
-
 enum Rep {
     Success,
     ConnectError,
@@ -97,7 +114,6 @@ impl From<Rep> for u8 {
         }
     }
 }
-
 #[derive(Debug)]
 pub struct Socks5Req {
     ver: u8,
@@ -144,9 +160,7 @@ impl Socks5Req {
 
         let mut buffer = vec![0u8; 2];
         stream.read_exact(&mut buffer).await?;
-        let port = unsafe {
-            std::mem::transmute::<[u8; 2], u16>(buffer.try_into().unwrap())
-        };
+        let port = (buffer[0] as u16) << 8 | buffer[1] as u16;
         let sockets = to_socket_addrs(addr_type, &addr[..], port);
 
         let req = Socks5Req {

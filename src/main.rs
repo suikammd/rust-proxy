@@ -22,16 +22,18 @@
 
 #![warn(rust_2018_idioms)]
 mod socks5;
+mod error;
 
 use tokio::io::{AsyncWriteExt, copy_bidirectional};
-use tokio::io::{self, AsyncReadExt};
+use tokio::io::{AsyncReadExt};
 use tokio::net::{TcpListener, TcpStream};
 
-use futures::FutureExt;
+use futures::{FutureExt, TryFutureExt};
 use std::env;
 use std::error::Error;
 use std::io::ErrorKind;
 
+use crate::error::Socks5Error;
 use crate::socks5::{Socks5Reply, Socks5Req};
 
 #[tokio::main]
@@ -55,8 +57,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-async fn serve(mut inbound: TcpStream) -> Result<(), Box<dyn Error>> {
-    println!("get new connections");
+async fn serve(mut inbound: TcpStream) -> Result<(), Socks5Error> {
+    println!("get new connections from {}", inbound.peer_addr()?.ip());
+    // first handshake
+    handshake(&mut inbound).await?;
+    println!("handshake successfully");
     let req = Socks5Req::new(&mut inbound).await?;
     let mut target = TcpStream::connect(&(req.sockets)[..]).await?;
     println!("connect successfully");
@@ -76,4 +81,27 @@ async fn serve(mut inbound: TcpStream) -> Result<(), Box<dyn Error>> {
             return Ok(());
         },
     }
+}
+
+async fn handshake(stream: &mut TcpStream) -> Result<(), Socks5Error> {
+    let mut header = vec![0u8; 2];
+    stream.read_exact(&mut header).await?;
+    let socks_type = header[0];
+    // validate socks type
+    if socks_type != 0x05 {
+        return Err(Socks5Error::UnsupportedSocksType(header[0]));
+    }
+    let method_len = header[1];
+    let mut methods = vec![0u8; method_len as usize];
+    stream.read_exact(&mut methods).await?;
+
+    // validate methods
+    // only support no auth for now
+    let support = methods.into_iter().any(|method|method == 0);
+    if !support {
+        return Err(Socks5Error::UnsupportedMethodType);
+    }
+
+    stream.write(&[0x05, 0x00]).await?;
+    Ok(())
 }
