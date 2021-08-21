@@ -8,6 +8,12 @@ pub enum Socks5Error {
     UnsupportedSocksType(u8),
     #[error("method type not supported")]
     UnsupportedMethodType,
+    #[error("addr type not supported")]
+    UnsupportedAddrType,
+    #[error("command not supported")]
+    UnsupportedCommand,
+    #[error("invalid domain")]
+    InvalidDomain,
     #[error("data store disconnected")]
     Disconnect(#[from] io::Error),
     #[error("the data for key `{0}` is not available")]
@@ -20,3 +26,5 @@ pub enum Socks5Error {
     #[error("unknown data store error")]
     Unknown,
 }
+
+pub type SocksResult<T> = Result<T, Socks5Error>;

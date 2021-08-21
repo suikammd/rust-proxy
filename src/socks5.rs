@@ -1,8 +1,9 @@
-use std::{convert::TryFrom, io::{Error, ErrorKind}, net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6, ToSocketAddrs}};
+use std::{convert::{TryFrom, TryInto}, io::{ErrorKind, Read}, net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6, ToSocketAddrs}};
 
-use tokio::{io::AsyncReadExt, net::TcpStream};
+use futures::TryFutureExt;
+use tokio::{io::{AsyncReadExt, AsyncWriteExt}, net::TcpStream};
 
-use crate::error::Socks5Error;
+use crate::error::{Socks5Error, SocksResult};
 
 const SOCKS5_VERSION: u8 = 0x05;
 
@@ -22,53 +23,112 @@ impl TryFrom<u8> for MethodType {
     }
 }
 
-#[derive(Clone, Copy)]
 #[derive(Debug)]
-pub enum AddrType {
-    V4 = 1,
-    Domain = 3,
-    V6 = 4,
+pub enum Addr {
+    IpV4(([u8; 4], u16)),
+    Domain((String, u16)),
+    IpV6(([u8; 16], u16))
 }
 
-impl From<u8> for AddrType {
-    fn from(orig: u8) -> Self {
-        match orig {
-            1 => AddrType::V4,
-            3 => AddrType::Domain,
-            4 => AddrType::V6,
-            _ => unreachable!(),
+impl TryFrom<Addr> for Vec<SocketAddr> {
+    type Error = Socks5Error;
+    fn try_from(a: Addr) -> Result<Vec<SocketAddr>, Self::Error> {
+        println!("addr is {:?}", a);
+        match a {
+            Addr::IpV4((addr, port)) => {
+                let addr = Ipv4Addr::new(addr[0], addr[1], addr[2], addr[3]);
+                Ok(vec![SocketAddrV4::new(addr, port).into()])
+            },
+            Addr::Domain((addr, port)) => {
+                println!("addr {:?} port {:?}", addr, port);
+                Ok((addr, port).to_socket_addrs()?.collect())
+            },
+            Addr::IpV6((addr, port)) => {
+                let addr: Vec<u16> = (0..8)
+                    .map(|x| ((addr[2 * x] as u16) << 8) | (addr[2 * x + 1] as u16))
+                    .collect();
+                let addr = Ipv6Addr::new(
+                    addr[0], addr[1], addr[2], addr[3], addr[4], addr[5], addr[6], addr[7],
+                );
+                Ok(vec![SocketAddrV6::new(addr, port, 0, 0).into()])
+            }
         }
     }
 }
 
-impl From<AddrType> for u8 {
-    fn from(orig: AddrType) -> u8 {
-        match orig {
-            AddrType::V4 => 1,
-            AddrType::Domain => 3,
-            AddrType::V6 => 4,
+impl Addr {
+    async fn decode(stream: &mut TcpStream) -> SocksResult<Self> {
+        let addr_type = stream.read_u8().await?;
+        println!("addr type is {:?}",addr_type);
+        match addr_type {
+            1 => {
+                let mut addr = [0u8; 4];
+                stream.read_exact(&mut addr).await?;
+                let port = stream.read_u16().await?;
+                println!("addr {:?} port {:?}", addr, port);
+                Ok(Addr::IpV4((addr, port)))
+            },
+            3 => {
+                let addr_len = stream.read_u8().await?;
+                let mut addr = [0u8; 255];
+                stream.read(&mut addr[..(addr_len as usize)]).await?;
+                let port = stream.read_u16().await?;
+                Ok(Addr::Domain((std::str::from_utf8(&addr[..(addr_len as usize)]).unwrap().to_string(), port)))
+            },
+            4 => {
+                let mut addr = [0u8; 16];
+                stream.read_exact(&mut addr).await?;
+                let port = stream.read_u16().await?;
+                Ok(Addr::IpV6((addr, port)))
+            },
+            _ => Err(Socks5Error::UnsupportedAddrType),
         }
+    }
+
+    async fn encode(self, stream: &mut TcpStream) -> SocksResult<()> {
+        let addr_port;
+        match self {
+            Addr::IpV4((addr, port)) => {
+                stream.write(&[0x01]).await?;
+                stream.write(&addr).await?;
+                addr_port = port;
+            },
+            Addr::Domain((addr, port)) => {
+                stream.write(&[0x03, addr.len() as u8]).await?;
+                stream.write(addr.as_bytes()).await?;
+                addr_port = port;
+            },
+            Addr::IpV6((addr, port)) => {
+                stream.write(&[0x04]).await?;
+                stream.write(&addr).await?;
+                addr_port = port;
+            }
+        }
+        stream.write_u16(addr_port).await?;
+        Ok(())
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 enum Command {
     Connect,
     Bind,
     Udp,
 }
 
-impl From<u8> for Command {
-    fn from(orig: u8) -> Self {
-        match orig {
-            1 => Command::Connect,
-            2 => Command::Bind,
-            3 => Command::Udp,
-            _ => unreachable!(),
+impl TryFrom<u8> for Command {
+    type Error = Socks5Error;
+    fn try_from(value: u8) -> SocksResult<Self> {
+        match value {
+            1 => Ok(Command::Connect),
+            2 => Ok(Command::Bind),
+            3 => Ok(Command::Udp),
+            _ => Err(Socks5Error::UnsupportedCommand)
         }
     }
 }
-enum Rep {
+
+pub enum Rep {
     Success,
     ConnectError,
     DisallowConnection,
@@ -114,121 +174,67 @@ impl From<Rep> for u8 {
         }
     }
 }
-#[derive(Debug)]
-pub struct Socks5Req {
-    ver: u8,
-    cmd: Command,
-    atyp: AddrType,
-    addr: Vec<u8>,
-    port: u16,
-    pub sockets: Vec<SocketAddr>,
-}
-
-impl Socks5Req {
-    pub async fn new(stream: &mut TcpStream) -> std::io::Result<Self> {
-        let mut buffer = vec![0u8; 4];
-        stream.read_exact(&mut buffer).await?;
-        let ver = buffer[0];
-        if ver != SOCKS5_VERSION {
-            return Err(Error::new(ErrorKind::Other, "oh no!"));
-        }
-
-        let cmd = Command::from(buffer[1]);
-        let addr_type = AddrType::from(buffer[3]);
-        let mut addr: Vec<u8> = vec![];
-        match addr_type {
-            AddrType::V4 => {
-                println!("it is v4");
-                let mut buffer = vec![0u8; 4];
-                stream.read_exact(&mut buffer).await?;
-                addr = buffer.clone();
-            }
-            AddrType::Domain => {
-                println!("it is domain");
-                let mut buffer = vec![0u8; 1];
-                stream.read_exact(&mut buffer).await?;
-                let mut buffer = vec![0u8; buffer[0] as usize];
-                stream.read_exact(&mut buffer).await?;
-                addr = buffer;
-            }
-            AddrType::V6 => {
-                let mut buffer = vec![0u8; 16];
-                stream.read_exact(&mut buffer).await?;
-                addr = buffer;
-            }
-        }
-
-        let mut buffer = vec![0u8; 2];
-        stream.read_exact(&mut buffer).await?;
-        let port = (buffer[0] as u16) << 8 | buffer[1] as u16;
-        let sockets = to_socket_addrs(addr_type, &addr[..], port);
-
-        let req = Socks5Req {
-            ver,
-            cmd,
-            atyp: addr_type,
-            addr,
-            port,
-            sockets,
-        };
-        println!("aaaaaaa{:?}", req);
-        Ok(req)
-    }
-}
 
 pub struct Socks5Reply {
     ver: u8,
     rep: Rep,
-    atyp: AddrType,
-    addr: Vec<u8>,
-    port: u16,
+    addr: Addr,
 }
 
 impl Socks5Reply {
-    pub fn new(req: Socks5Req) -> Self {
+    pub fn new(ver: u8, rep: Rep, addr: Addr) -> Self {
         Self {
-            ver: req.ver,
-            rep: Rep::Success,
-            atyp: req.atyp,
-            addr: req.addr,
-            port: req.port,
+            ver,
+            rep,
+            addr
         }
     }
 
-    pub fn to_bytes(self) -> Vec<u8> {
-        let mut buffer = vec![0u8; 5];
-        buffer[0] = self.ver;
-        buffer[1] = self.rep.into();
-        buffer[2] = 0;
-        buffer[3] = self.atyp.into();
-        buffer.extend([self.addr.len() as u8]);
-        buffer.extend(self.addr);
-        let port = unsafe {
-            std::mem::transmute::<u16, [u8; 2]>(self.port)
-        };
-        buffer.extend(port);
-        buffer
+    pub async fn encode(self, stream: &mut TcpStream) -> SocksResult<()> {
+        stream.write_u8(self.ver).await?;
+        stream.write_u8(self.rep.into()).await?;
+        stream.write_u8(0x00).await?;
+        self.addr.encode(stream).await?;
+        Ok(())
     }
 }
 
-fn to_socket_addrs(atyp: AddrType, addr: &[u8], port: u16) -> Vec<SocketAddr> {
-    match atyp {
-        AddrType::V4 => {
-            let addr = Ipv4Addr::new(addr[0], addr[1], addr[2], addr[3]);
-            vec![SocketAddrV4::new(addr, port).into()]
-        }
-        AddrType::Domain => {
-            let addr = std::str::from_utf8(addr.into()).unwrap();
-            (addr, port).to_socket_addrs().unwrap().collect()
-        }
-        AddrType::V6 => {
-            let addr: Vec<u16> = (0..8)
-                .map(|x| ((addr[2 * x] as u16) << 8) | (addr[2 * x + 1] as u16))
-                .collect();
-            let addr = Ipv6Addr::new(
-                addr[0], addr[1], addr[2], addr[3], addr[4], addr[5], addr[6], addr[7],
-            );
-            vec![SocketAddrV6::new(addr, port, 0, 0).into()]
-        }
+pub async fn handshake(stream: &mut TcpStream) -> Result<(), Socks5Error> {
+    let mut header = vec![0u8; 2];
+
+    stream.read_exact(&mut header).await?;
+    let socks_type = header[0];
+    // validate socks type
+    if socks_type != 0x05 {
+        return Err(Socks5Error::UnsupportedSocksType(header[0]));
     }
+    let method_len = header[1];
+    let mut methods = vec![0u8; method_len as usize];
+    stream.read_exact(&mut methods).await?;
+
+    // validate methods
+    // only support no auth for now
+    let support = methods.into_iter().any(|method|method == 0);
+    if !support {
+        return Err(Socks5Error::UnsupportedMethodType);
+    }
+
+    stream.write_all(&[0x05, 0x00]).await?;
+    Ok(())
+}
+
+pub async fn parse_addrs(stream: &mut TcpStream) -> Result<Vec<SocketAddr>, Socks5Error> {
+    let mut header = [0u8; 3];
+    stream.read_exact(&mut header).await?;
+    if header[0] != 0x05 {
+        return Err(Socks5Error::UnsupportedSocksType(header[0]));
+    }
+
+    let command = Command::try_from(header[1])?;
+    if command != Command::Connect {
+        return Err(Socks5Error::UnsupportedCommand)
+    }
+
+    let addr = Addr::decode(stream).await?;
+    addr.try_into()
 }
