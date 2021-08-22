@@ -122,14 +122,13 @@ async fn handshake(stream: &mut TcpStream) -> Result<(), CustomError> {
 }
 
 struct ProxyRequest {
-    ver: u8,
     cmd: Command,
     addr: Addr,
 }
 
 impl ProxyRequest {
     pub async fn encode(self, stream: &mut TcpStream) -> SocksResult<()> {
-        stream.write_all(&[0x05, self.cmd.into(), 0x00]).await?;
+        stream.write_u8(self.cmd.into()).await?;
         Ok(self.addr.encode(stream).await?)
     }
 }
@@ -149,7 +148,6 @@ async fn get_proxy_req(stream: &mut TcpStream) -> SocksResult<ProxyRequest> {
     let addr = Addr::decode(stream).await?;
     println!("addr {:?}", addr);
     Ok(ProxyRequest {
-        ver: header[0],
         cmd: command,
         addr,
     })

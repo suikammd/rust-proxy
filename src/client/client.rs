@@ -54,13 +54,7 @@ async fn serve(mut inbound: TcpStream) -> Result<(), CustomError> {
 }
 
 async fn parse_addrs(stream: &mut TcpStream) -> Result<Vec<SocketAddr>, CustomError> {
-    let mut header = [0u8; 3];
-    stream.read_exact(&mut header).await?;
-    if header[0] != 0x05 {
-        return Err(CustomError::UnsupportedSocksType(header[0]));
-    }
-
-    let command = Command::try_from(header[1])?;
+    let command = Command::try_from(stream.read_u8().await?)?;
     if command != Command::Connect {
         return Err(CustomError::UnsupportedCommand);
     }
