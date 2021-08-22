@@ -12,6 +12,8 @@ pub enum Socks5Error {
     UnsupportedAddrType,
     #[error("command not supported")]
     UnsupportedCommand,
+    #[error("invalid rep code")]
+    InvalidRepCode,
     #[error("invalid domain")]
     InvalidDomain,
     #[error("data store disconnected")]
