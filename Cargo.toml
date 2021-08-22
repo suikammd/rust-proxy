@@ -10,7 +10,12 @@ tokio = { version = "1.10", features = ["full"] }
 futures = "0"
 tokio-socks = "0.5.1"
 thiserror = "1"
+structopt = { version = "0.3", default-features = false }
 
 [[bin]]
 name = "server"
 path = "src/bin/server.rs"
+
+[[bin]]
+name = "client"
+path = "src/bin/client.rs"

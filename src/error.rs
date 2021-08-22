@@ -3,7 +3,7 @@ use std::io;
 
 
 #[derive(Error, Debug)]
-pub enum Socks5Error {
+pub enum CustomError {
     #[error("socks type `{0}` not supported")]
     UnsupportedSocksType(u8),
     #[error("method type not supported")]
@@ -29,4 +29,4 @@ pub enum Socks5Error {
     Unknown,
 }
 
-pub type SocksResult<T> = Result<T, Socks5Error>;
+pub type SocksResult<T> = Result<T, CustomError>;

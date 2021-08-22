@@ -1,6 +1,6 @@
 use std::convert::TryFrom;
 
-use crate::error::{Socks5Error, SocksResult};
+use crate::error::{CustomError, SocksResult};
 
 const SOCKS5_VERSION: u8 = 0x05;
 
@@ -10,12 +10,12 @@ pub enum MethodType {
 }
 
 impl TryFrom<u8> for MethodType {
-    type Error = Socks5Error;
+    type Error = CustomError;
     fn try_from(orig: u8) -> SocksResult<Self> {
         match orig {
             0 => Ok(MethodType::NoAuth),
             2 => Ok(MethodType::UserPass),
-            _ => Err(Socks5Error::UnsupportedMethodType)
+            _ => Err(CustomError::UnsupportedMethodType),
         }
     }
 }
@@ -28,17 +28,28 @@ pub enum Command {
 }
 
 impl TryFrom<u8> for Command {
-    type Error = Socks5Error;
+    type Error = CustomError;
     fn try_from(value: u8) -> SocksResult<Self> {
         match value {
             1 => Ok(Command::Connect),
             2 => Ok(Command::Bind),
             3 => Ok(Command::Udp),
-            _ => Err(Socks5Error::UnsupportedCommand)
+            _ => Err(CustomError::UnsupportedCommand),
         }
     }
 }
 
+impl From<Command> for u8 {
+    fn from(command: Command) -> Self {
+        match command {
+            Command::Connect => 0x01,
+            Command::Bind => 0x02,
+            Command::Udp => 0x03,
+        }
+    }
+}
+
+#[derive(Debug)]
 pub enum RepCode {
     Success,
     ConnectError,
@@ -53,7 +64,7 @@ pub enum RepCode {
 }
 
 impl TryFrom<u8> for RepCode {
-    type Error = Socks5Error;
+    type Error = CustomError;
     fn try_from(orig: u8) -> Result<Self, Self::Error> {
         match orig {
             0 => Ok(RepCode::Success),
@@ -65,7 +76,7 @@ impl TryFrom<u8> for RepCode {
             6 => Ok(RepCode::TTLTimeout),
             7 => Ok(RepCode::UnsupportedCommand),
             8 => Ok(RepCode::UnsupportedAddrType),
-            _ => Err(Socks5Error::InvalidRepCode),
+            _ => Err(CustomError::InvalidRepCode),
         }
     }
 }
