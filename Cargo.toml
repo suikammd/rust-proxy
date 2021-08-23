@@ -11,6 +11,7 @@ futures = "0"
 tokio-socks = "0.5.1"
 thiserror = "1"
 structopt = { version = "0.3", default-features = false }
+websocket = "0.26.2"
 
 [[bin]]
 name = "server"
