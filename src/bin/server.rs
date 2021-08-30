@@ -10,7 +10,7 @@ struct ClientOpt {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let opt = ClientOpt::from_args();
-    println!("client listen on {}", opt.listen_addr);
+    println!("server listen on {}", opt.listen_addr);
     let client = Server::new(opt.listen_addr);
     client.run().await
 }

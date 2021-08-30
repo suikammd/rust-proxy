@@ -1,5 +1,7 @@
 use std::convert::TryFrom;
 
+use bytes::BytesMut;
+
 use crate::error::{CustomError, SocksResult};
 
 const SOCKS5_VERSION: u8 = 0x05;
@@ -97,3 +99,33 @@ impl From<RepCode> for u8 {
         }
     }
 }
+
+// pub enum PacketType {
+//     Connect,
+//     Data,
+// }
+
+// impl TryFrom<u8> for PacketType {
+//     type Error = CustomError;
+
+//     fn try_from(value: u8) -> Result<Self, Self::Error> {
+//         match value {
+//             0 => Ok(PacketType::Data),
+//             1 => Ok(PacketType::Data),
+//             _ => Err(CustomError::InvalidPacketType),
+//         }
+//     }
+// }
+
+// // new message protocol
+// // data_type 2 bit
+// // connection_id 14bit
+
+// // if data_type == 0, data_len 16bit
+
+// // data_type = 0 data
+// // data_type = 1 connect
+// pub enum WSPacket {
+//     packet_type: PacketType,
+//     connection_id:
+// }

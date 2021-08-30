@@ -14,10 +14,14 @@ pub enum CustomError {
     UnsupportedCommand,
     #[error("invalid rep code")]
     InvalidRepCode,
+    #[error("invalid packet type")]
+    InvalidPacketType,
     #[error("invalid domain")]
     InvalidDomain,
-    #[error("data store disconnected")]
+    #[error("data store disconnected `{0}`")]
     Disconnect(#[from] io::Error),
+    #[error("tungstenite error")]
+    TungsteniteError(#[from] tokio_tungstenite::tungstenite::Error),
     #[error("the data for key `{0}` is not available")]
     Redaction(String),
     #[error("invalid header (expected {expected:?}, found {found:?})")]

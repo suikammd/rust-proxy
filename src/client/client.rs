@@ -5,16 +5,19 @@ use std::{
     sync::Arc,
 };
 
-use futures::{FutureExt, TryFutureExt};
+use bytes::{BufMut, BytesMut};
+use futures::{FutureExt, SinkExt, StreamExt, TryFutureExt};
 use tokio::{
-    io::{copy_bidirectional, AsyncReadExt, AsyncWriteExt},
+    io::{self, copy_bidirectional, AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, TcpStream, ToSocketAddrs},
 };
+use tokio_tungstenite::{connect_async, tungstenite::Message};
 
 use crate::{
-    server::Addr,
     codec::codec::{Command, RepCode},
     error::{CustomError, SocksResult},
+    server::Addr,
+    util::copy::{client_read_from_tcp_to_websocket, client_read_from_websocket_to_tcp},
 };
 
 pub struct Client {
@@ -26,7 +29,7 @@ impl Client {
     pub fn new(listen_addr: String, proxy_addr: String) -> Self {
         Self {
             listen_addr,
-            proxy_addr: Arc::new(proxy_addr),
+            proxy_addr: Arc::new(format!("ws://{}", proxy_addr)),
         }
     }
 
@@ -46,7 +49,7 @@ impl Client {
     async fn serve(mut inbound: TcpStream, proxy_addr: Arc<String>) -> Result<(), CustomError> {
         println!("get new connections from {}", inbound.peer_addr()?.ip());
 
-        // handshake: decide which method to use
+        // socks5 handshake: decide which method to use
         handshake_with_browser(&mut inbound).await?;
         println!("handshake successfully");
         let proxy_req = get_proxy_req(&mut inbound).await?;
@@ -58,23 +61,26 @@ impl Client {
         reply.encode(&mut inbound).await?;
 
         // TODO: change to secure websocket connection
-        let mut target = TcpStream::connect(proxy_addr.as_str()).await?;
-        proxy_req.encode(&mut target).await?;
-        println!("connect successfully");
-        match copy_bidirectional(&mut target, &mut inbound).await {
-            Err(e) if e.kind() == ErrorKind::NotConnected => {
-                println!("already closed");
-                return Ok(());
-            }
-            Err(e) => {
-                println!("{}", e);
-                return Ok(());
-            }
-            Ok((s_to_t, t_to_s)) => {
-                println!("{} {}", s_to_t, t_to_s);
-                return Ok(());
-            }
-        }
+        let url = url::Url::parse(proxy_addr.as_str()).unwrap();
+        let (ws_stream, _) = connect_async(url).await.expect("Failed to connect");
+        println!("WebSocket handshake has been successfully completed");
+
+        let (input_read, input_write) = inbound.split();
+        let (mut output_write, output_read) = ws_stream.split();
+
+        // send connect packet
+        let mut bytes = BytesMut::new();
+        proxy_req.to_bytes(&mut bytes);
+        println!("connect packet {:?}", bytes);
+        output_write.send(Message::binary(bytes.to_vec())).await?;
+        println!("send connect packet successfully");
+
+        let (_, _) = tokio::join!(
+            client_read_from_tcp_to_websocket(input_read, output_write),
+            client_read_from_websocket_to_tcp(input_write, output_read)
+        );
+
+        Ok(())
     }
 }
 
@@ -133,6 +139,10 @@ impl ProxyRequest {
         stream.write_u8(self.cmd.into()).await?;
         Ok(self.addr.encode(stream).await?)
     }
+
+    pub fn to_bytes(&self, bytes: &mut BytesMut) {
+        self.addr.to_bytes(&self.cmd, bytes);
+    }
 }
 
 async fn get_proxy_req(stream: &mut TcpStream) -> SocksResult<ProxyRequest> {
@@ -149,8 +159,5 @@ async fn get_proxy_req(stream: &mut TcpStream) -> SocksResult<ProxyRequest> {
 
     let addr = Addr::decode(stream).await?;
     println!("addr {:?}", addr);
-    Ok(ProxyRequest {
-        cmd: command,
-        addr,
-    })
+    Ok(ProxyRequest { cmd: command, addr })
 }

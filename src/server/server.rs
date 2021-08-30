@@ -1,11 +1,18 @@
-use std::{convert::{TryFrom, TryInto}, io::ErrorKind, net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6, ToSocketAddrs}};
-
-use crate::{
-    codec::codec::Command,
-    error::{CustomError, SocksResult},
+use std::{
+    convert::{TryFrom, TryInto},
+    io::ErrorKind,
+    net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6, ToSocketAddrs},
 };
-use futures::{FutureExt};
-use tokio::{io::{AsyncReadExt, AsyncWriteExt, copy_bidirectional}, net::{TcpListener, TcpStream}};
+
+use crate::{codec::codec::Command, error::{CustomError, SocksResult}, util::copy::{client_read_from_tcp_to_websocket, client_read_from_websocket_to_tcp, server_read_from_tcp_to_websocket, server_read_from_websocket_to_tcp}};
+use bytes::{BufMut, BytesMut};
+use futures::{FutureExt, StreamExt, TryStreamExt};
+use futures_util::future;
+use tokio::{
+    io::{copy_bidirectional, AsyncReadExt, AsyncWriteExt},
+    net::{TcpListener, TcpSocket, TcpStream},
+};
+use tokio_tungstenite::tungstenite::Message;
 
 pub struct Server {
     listen_addr: String,
@@ -13,15 +20,14 @@ pub struct Server {
 
 impl Server {
     pub fn new(listen_addr: String) -> Self {
-        Self {
-            listen_addr,
-        }
+        Self { listen_addr }
     }
 
     pub async fn run(self) -> Result<(), Box<dyn std::error::Error>> {
+        // TODO: change to websocket server
         let listener = TcpListener::bind(self.listen_addr).await?;
-        while let Ok((inbound, _)) = listener.accept().await {
-            let serve = serve(inbound).map(|r| {
+        while let Ok((inbound, addr)) = listener.accept().await {
+            let serve = serve(inbound, addr).map(|r| {
                 if let Err(e) = r {
                     println!("Failed to transfer; error={}", e);
                 }
@@ -32,25 +38,39 @@ impl Server {
     }
 }
 
-async fn serve(mut inbound: TcpStream) -> Result<(), CustomError> {
-    println!("get new connections from {}", inbound.peer_addr()?.ip());
+async fn serve(inbound: TcpStream, addr: SocketAddr) -> Result<(), CustomError> {
+    // parse connect packet
+    let ws_stream = tokio_tungstenite::accept_async(inbound)
+        .await
+        .expect("Error during the websocket handshake occurred");
 
-    let addrs = parse_addrs(&mut inbound).await?;
-    let mut target = TcpStream::connect(&addrs[..]).await?;
-    match copy_bidirectional(&mut target, &mut inbound).await {
-        Err(e) if e.kind() == ErrorKind::NotConnected => {
-            println!("already closed");
+    // get connect addrs from connect packet
+    let (mut input_write, mut input_read) = ws_stream.split();
+    let addrs: Vec<SocketAddr>;
+    match input_read.try_next().await {
+        Ok(Some(msg)) => {
+            let data = msg.into_data();
+            addrs = Addr::from_bytes(data)?;
+        }
+        Ok(None) => {
             return Ok(());
         }
         Err(e) => {
-            println!("{}", e);
-            return Ok(());
-        }
-        Ok((s_to_t, t_to_s)) => {
-            println!("{} {}", s_to_t, t_to_s);
+            // TODO
+            println!("{:?}", e);
             return Ok(());
         }
     }
+
+    let mut target = TcpStream::connect(&addrs[..]).await?;
+    println!("connect to proxy addrs successfully");
+    let (mut output_read, mut output_write) = target.split();
+
+    let (_, _) = tokio::join!(
+        server_read_from_tcp_to_websocket(output_read, input_write),
+        server_read_from_websocket_to_tcp(output_write, input_read)
+    );
+    Ok(())
 }
 
 async fn parse_addrs(stream: &mut TcpStream) -> Result<Vec<SocketAddr>, CustomError> {
@@ -80,7 +100,6 @@ impl TryFrom<Addr> for Vec<SocketAddr> {
                 Ok(vec![SocketAddrV4::new(addr, port).into()])
             }
             Addr::Domain((addr, port)) => {
-                println!("addr {:?} port {:?}", addr, port);
                 Ok((addr, port).to_socket_addrs()?.collect())
             }
             Addr::IpV6((addr, port)) => {
@@ -151,5 +170,65 @@ impl Addr {
         }
         stream.write_u16(addr_port).await?;
         Ok(())
+    }
+
+    pub fn to_bytes(&self, command: &Command, bytes: &mut BytesMut) {
+        let cmd = match command {
+            Command::Connect => 1,
+            Command::Bind => 2,
+            Command::Udp => 3,
+        };
+        println!("addr is {:?}", self);
+
+        match self {
+            Addr::IpV4(addr) => {
+                bytes.put_u8(cmd << 4 | 1);
+                bytes.put_u16(addr.1);
+                bytes.put_slice(&addr.0[..]);
+            }
+            Addr::Domain(addr) => {
+                bytes.put_u8(cmd << 4 | 3);
+                bytes.put_u16(addr.1);
+                bytes.put(addr.0.as_bytes());
+            }
+            Addr::IpV6(addr) => {
+                bytes.put_u8(cmd << 4 | 4);
+                bytes.put_u16(addr.1);
+                bytes.put_slice(&addr.0[..]);
+            }
+        }
+    }
+
+    pub fn from_bytes(bytes: Vec<u8>) -> Result<Vec<SocketAddr>, CustomError> {
+        println!("conenct packes {:?}", bytes);
+        let addr_type = bytes[0] & 0x0f;
+        let cmd = bytes[0] >> 4;
+
+        if cmd != 1 {
+            return Err(CustomError::UnsupportedCommand);
+        }
+
+        let port = unsafe {
+            std::mem::transmute::<[u8; 2], u16>([bytes[2], bytes[1]])
+        };
+
+        let addr: Addr;
+        match addr_type {
+            1 => {
+                assert!(bytes.len() == 7);
+                addr = Addr::IpV4(([bytes[3], bytes[4], bytes[5], bytes[6]], port));
+            },
+            3 => {
+                let domain = String::from_utf8_lossy(&bytes[3..]);
+                addr = Addr::Domain((domain.into(), port));
+            },
+            4 => {
+                assert!(bytes.len() == 19);
+                addr = Addr::IpV6(([bytes[3], bytes[4], bytes[5], bytes[6], bytes[7], bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15], bytes[16], bytes[17], bytes[18]], port));
+            }
+            _ => unreachable!()
+        }
+        println!("addr is {:?}", addr);
+        addr.try_into()
     }
 }

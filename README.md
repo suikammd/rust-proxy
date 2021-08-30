@@ -13,3 +13,23 @@ client:
 1. get and parse custom request from websocket stream
 2. connect to addr in custom request and get a new stream
 3. combine proxy stream with transformed new stream (websocket based)
+
+first step: done
+straight tcp <-> tcp <-> tcp
+
+second step:
+tcp <-> websocket <-> tcp
+
+third step:
+tcp <-> secure websocket <-> tcp
+
+forth step:
+tcp <-> fixed number of secure websocket <-> tcp
+
+
+new message protocol
+data_type 1 bit
+connection_id 15bit
+
+data_type = 0 data
+data_type = 1 connect
