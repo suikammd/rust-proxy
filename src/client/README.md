@@ -16,11 +16,10 @@ input: listen_addr(server listens at this addr), proxy_addr(server will proxy re
     | 1   | 1   | 0x00 | 1    | 动态     | 2        |
 
 
-    server will convert this request to a customized struct to a proxy server
-    after then, if success, server response success rep code, if not, server will say fail and close this connection
-    | VER | REP | RSV  | ATYP | DST.ADDR | DST.PORT |
-    | --- | --- | ---- | ---- | -------- | -------- |
-    | 1   | 1   | 0x00 | 1    | 动态     | 2        |
+    server will convert this request to a customized struct to a proxy server based on websocket
+    | CMD & ADDR_TYP  | DST.PORT | DST.ADDR |
+    | ---- | ---- | -------- |
+    | 0x00 | 2    | 动态     |
 
     
     then, server will combine request stream with proxy stream

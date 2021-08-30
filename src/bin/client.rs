@@ -24,8 +24,7 @@ struct ClientOpt {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let opt = ClientOpt::from_args();
-    println!("input opts are {:?}", opt);
-    println!("Listening on: {}", opt.listen_addr);
+    println!("client listen on: {}", opt.listen_addr);
     let server = Client::new(opt.listen_addr, opt.proxy_addr);
     server.run().await
 }
