@@ -24,7 +24,7 @@ impl Client {
     pub fn new(listen_addr: String, proxy_addr: String) -> Self {
         Self {
             listen_addr,
-            proxy_addr: Arc::new(format!("ws://{}", proxy_addr)),
+            proxy_addr: Arc::new(format!("wss://{}", proxy_addr)),
         }
     }
 

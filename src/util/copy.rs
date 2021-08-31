@@ -15,7 +15,7 @@ pub async fn client_read_from_tcp_to_websocket<'a>(mut tcp_stream: ReadHalf<'a>,
         unsafe {
             buffer.set_len(len);
         }
-        println!("CTW {:?} len is {:?}", buffer, len);
+        // println!("CTW {:?} len is {:?}", buffer, len);
         websocket_sink.send(Message::binary(buffer)).await?;
     }
 }
@@ -25,7 +25,7 @@ pub async fn client_read_from_websocket_to_tcp<'a>(mut tcp_stream: WriteHalf<'a>
         match websocket_stream.next().await {
             Some(msg) => {
                 let msg = msg?.into_data();
-                println!("CWT {:?}", msg);
+                // println!("CWT {:?}", msg);
                 tcp_stream.write_all(&msg).await?;
             },
             None => break
@@ -38,7 +38,7 @@ pub async fn server_read_from_tcp_to_websocket<'a>(mut tcp_stream: ReadHalf<'a>,
     loop {
         let mut buffer = vec![0; 1024];
         let len = tcp_stream.read(&mut buffer).await?;
-        println!("STW {:?}", buffer);
+        // println!("STW {:?}", buffer);
         if len == 0 {
             return Ok(());
         }
@@ -55,7 +55,7 @@ pub async fn server_read_from_websocket_to_tcp<'a>(mut tcp_stream: WriteHalf<'a>
         match websocket_stream.next().await {
             Some(msg) => {
                 let msg = msg?.into_data();
-                println!("SWT {:?}", msg);
+                // println!("SWT {:?}", msg);
                 tcp_stream.write_all(&msg).await?;
             },
             None => break
