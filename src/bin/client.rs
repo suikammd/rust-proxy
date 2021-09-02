@@ -1,15 +1,5 @@
 // extern crate ss;
-use ss::client::{Client};
-
-use tokio::io::AsyncReadExt;
-use tokio::io::{copy_bidirectional, AsyncWriteExt};
-use tokio::net::{TcpListener, TcpStream};
-
-use futures::{FutureExt, TryFutureExt};
-use std::env;
-
-
-
+use ss::client::Client;
 use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
@@ -24,7 +14,6 @@ struct ClientOpt {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let opt = ClientOpt::from_args();
-    println!("client listen on: {}", opt.listen_addr);
-    let server = Client::new(opt.listen_addr, opt.proxy_addr);
-    server.run().await
+    let client = Client::new(opt.listen_addr, opt.proxy_addr)?;
+    client.run().await
 }

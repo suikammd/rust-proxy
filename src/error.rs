@@ -1,9 +1,10 @@
-use thiserror::Error;
 use std::io;
-
+use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum CustomError {
+    #[error("parse server url error")]
+    UrlParseError(#[from] url::ParseError),
     #[error("socks type `{0}` not supported")]
     UnsupportedSocksType(u8),
     #[error("method type not supported")]
@@ -25,10 +26,7 @@ pub enum CustomError {
     #[error("the data for key `{0}` is not available")]
     Redaction(String),
     #[error("invalid header (expected {expected:?}, found {found:?})")]
-    InvalidHeader {
-        expected: String,
-        found: String,
-    },
+    InvalidHeader { expected: String, found: String },
     #[error("unknown data store error")]
     Unknown,
 }
