@@ -14,10 +14,7 @@ use crate::{
 use bytes::{BufMut, BytesMut};
 use futures::{FutureExt, StreamExt, TryStreamExt};
 use futures_util::future;
-use tokio::{
-    io::{copy_bidirectional, AsyncReadExt, AsyncWriteExt},
-    net::{TcpListener, TcpSocket, TcpStream},
-};
+use tokio::{io::{AsyncReadExt, AsyncWriteExt, BufReader, BufWriter, copy_bidirectional}, net::{TcpListener, TcpSocket, TcpStream}};
 use tokio_tungstenite::tungstenite::Message;
 
 pub struct Server {
@@ -70,6 +67,8 @@ async fn serve(inbound: TcpStream) -> Result<(), CustomError> {
     let mut target = TcpStream::connect(&addrs[..]).await?;
     println!("connect to proxy addrs successfully");
     let (mut output_read, mut output_write) = target.split();
+    let mut output_read = BufReader::new(output_read);
+    // let mut output_write = BufWriter::new(output_write);
 
     let (_, _) = tokio::join!(
         server_read_from_tcp_to_websocket(output_read, input_write),

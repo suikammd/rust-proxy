@@ -8,7 +8,7 @@ use std::{
 use bytes::{BufMut, BytesMut};
 use futures::{stream::SplitSink, FutureExt, SinkExt, StreamExt, TryFutureExt};
 use tokio::{
-    io::{self, copy_bidirectional, AsyncReadExt, AsyncWriteExt},
+    io::{self, copy_bidirectional, AsyncReadExt, AsyncWriteExt, BufReader, BufWriter},
     net::{TcpListener, TcpStream, ToSocketAddrs},
 };
 use tokio_tungstenite::{connect_async, tungstenite::Message, MaybeTlsStream, WebSocketStream};
@@ -54,20 +54,19 @@ impl Client {
         println!("Get new connections");
 
         // socks5 handshake: decide which method to use
-        Client::handshake_with_browser(&mut inbound).await?;
+        let (cmd, addr) = Client::socks5_handshake(&mut inbound).await?;
+        println!("cmd {:?} addr {:?}", cmd, addr);
         println!("handshake successfully");
 
-        let (cmd, addr) = Client::get_cmd_addr(&mut inbound).await?;
-        inbound.write_u8(0x05).await?;
-        inbound.write_u8(RepCode::Success.into()).await?;
-        inbound.write_u8(0x00).await?;
-        addr.encode(&mut inbound).await?;
-
-        let (ws_stream, _) = connect_async(server_url.as_ref()).await.expect("Failed to connect");
+        let (ws_stream, _) = connect_async(server_url.as_ref())
+            .await
+            .expect("Failed to connect");
         println!("WebSocket handshake has been successfully completed");
 
         let (input_read, input_write) = inbound.split();
         let (mut output_write, output_read) = ws_stream.split();
+        let mut input_read = BufReader::new(input_read);
+        // let mut input_write = BufWriter::new(input_write);
 
         // send connect packet
         let mut bytes = BytesMut::new();
@@ -83,7 +82,7 @@ impl Client {
         Ok(())
     }
 
-    async fn handshake_with_browser(stream: &mut TcpStream) -> Result<(), CustomError> {
+    async fn socks5_handshake(stream: &mut TcpStream) -> Result<(Command, Addr), CustomError> {
         let mut header = vec![0u8; 2];
 
         stream.read_exact(&mut header).await?;
@@ -104,7 +103,12 @@ impl Client {
         }
 
         stream.write_all(&[0x05, 0x00]).await?;
-        Ok(())
+        let (cmd, addr) = Client::get_cmd_addr(stream).await?;
+        stream.write_u8(0x05).await?;
+        stream.write_u8(RepCode::Success.into()).await?;
+        stream.write_u8(0x00).await?;
+        addr.encode(stream).await?;
+        Ok((cmd, addr))
     }
 
     async fn get_cmd_addr(stream: &mut TcpStream) -> SocksResult<(Command, Addr)> {

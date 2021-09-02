@@ -3,20 +3,23 @@ use futures::{
     SinkExt, StreamExt,
 };
 use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
+    io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufReader, BufWriter},
     net::{
         tcp::{ReadHalf, WriteHalf},
-        TcpStream,
+        TcpSocket, TcpStream,
     },
 };
 use tokio_tungstenite::{tungstenite::Message, MaybeTlsStream, WebSocketStream};
 
 use crate::error::CustomError;
 
-pub async fn client_read_from_tcp_to_websocket(
-    mut tcp_stream: ReadHalf<'_>,
+pub async fn client_read_from_tcp_to_websocket<T>(
+    mut tcp_stream: BufReader<T>,
     mut websocket_sink: SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>,
-) -> Result<(), CustomError> {
+) -> Result<(), CustomError>
+where
+    T: AsyncRead + Unpin,
+{
     loop {
         let mut buffer = vec![0; 1024];
         let len = tcp_stream.read(&mut buffer).await?;
@@ -27,7 +30,29 @@ pub async fn client_read_from_tcp_to_websocket(
         unsafe {
             buffer.set_len(len);
         }
-        // println!("CTW {:?} len is {:?}", buffer, len);
+        println!("CTW {:?} len is {:?}", buffer, len);
+        websocket_sink.send(Message::binary(buffer)).await?;
+    }
+}
+
+pub async fn server_read_from_tcp_to_websocket<T>(
+    mut tcp_stream: BufReader<T>,
+    mut websocket_sink: SplitSink<WebSocketStream<TcpStream>, Message>,
+) -> Result<(), CustomError>
+where
+    T: AsyncRead + Unpin,
+{
+    loop {
+        let mut buffer = vec![0; 1024];
+        let len = tcp_stream.read(&mut buffer).await?;
+        if len == 0 {
+            return Ok(());
+        }
+        println!("STW {:?}", buffer);
+
+        unsafe {
+            buffer.set_len(len);
+        }
         websocket_sink.send(Message::binary(buffer)).await?;
     }
 }
@@ -38,29 +63,10 @@ pub async fn client_read_from_websocket_to_tcp(
 ) -> Result<(), CustomError> {
     while let Some(msg) = websocket_stream.next().await {
         let msg = msg?.into_data();
-        // println!("CWT {:?}", msg);
+        println!("CWT {:?}", msg);
         tcp_stream.write_all(&msg).await?;
     }
     Ok(())
-}
-
-pub async fn server_read_from_tcp_to_websocket(
-    mut tcp_stream: ReadHalf<'_>,
-    mut websocket_sink: SplitSink<WebSocketStream<TcpStream>, Message>,
-) -> Result<(), CustomError> {
-    loop {
-        let mut buffer = vec![0; 1024];
-        let len = tcp_stream.read(&mut buffer).await?;
-        // println!("STW {:?}", buffer);
-        if len == 0 {
-            return Ok(());
-        }
-
-        unsafe {
-            buffer.set_len(len);
-        }
-        websocket_sink.send(Message::binary(buffer)).await?;
-    }
 }
 
 pub async fn server_read_from_websocket_to_tcp(
@@ -69,7 +75,7 @@ pub async fn server_read_from_websocket_to_tcp(
 ) -> Result<(), CustomError> {
     while let Some(msg) = websocket_stream.next().await { 
         let msg = msg?.into_data();
-                // println!("SWT {:?}", msg);
+                println!("SWT {:?}", msg);
                 tcp_stream.write_all(&msg).await?;
     }
     Ok(())
