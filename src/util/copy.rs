@@ -14,7 +14,7 @@ use tokio_tungstenite::{tungstenite::Message, MaybeTlsStream, WebSocketStream};
 use crate::error::CustomError;
 
 pub async fn client_read_from_tcp_to_websocket<T>(
-    mut tcp_stream: BufReader<T>,
+    mut tcp_stream: T,
     mut websocket_sink: SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>,
 ) -> Result<(), CustomError>
 where
@@ -36,7 +36,7 @@ where
 }
 
 pub async fn server_read_from_tcp_to_websocket<T>(
-    mut tcp_stream: BufReader<T>,
+    mut tcp_stream: T,
     mut websocket_sink: SplitSink<WebSocketStream<TcpStream>, Message>,
 ) -> Result<(), CustomError>
 where
@@ -73,10 +73,10 @@ pub async fn server_read_from_websocket_to_tcp(
     mut tcp_stream: WriteHalf<'_>,
     mut websocket_stream: SplitStream<WebSocketStream<TcpStream>>,
 ) -> Result<(), CustomError> {
-    while let Some(msg) = websocket_stream.next().await { 
+    while let Some(msg) = websocket_stream.next().await {
         let msg = msg?.into_data();
-                println!("SWT {:?}", msg);
-                tcp_stream.write_all(&msg).await?;
+        println!("SWT {:?}", msg);
+        tcp_stream.write_all(&msg).await?;
     }
     Ok(())
 }

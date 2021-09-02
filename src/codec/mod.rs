@@ -5,7 +5,7 @@ use std::{
 
 use bytes::{BufMut, BytesMut};
 use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
+    io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufWriter},
     net::TcpStream,
 };
 
@@ -138,7 +138,10 @@ impl TryFrom<Addr> for Vec<SocketAddr> {
 }
 
 impl Addr {
-    pub async fn decode(stream: &mut TcpStream) -> SocksResult<Self> {
+    pub async fn decode<T>(mut stream: T) -> SocksResult<Self>
+    where
+        T: AsyncRead + Unpin,
+    {
         let addr_type = stream.read_u8().await?;
         println!("addr type is {:?}", addr_type);
         match addr_type {
@@ -171,7 +174,10 @@ impl Addr {
         }
     }
 
-    pub async fn encode(&self, stream: &mut TcpStream) -> SocksResult<()> {
+    pub async fn encode<T>(&self, mut stream: BufWriter<T>) -> SocksResult<()>
+    where
+        T: AsyncWrite + Unpin,
+    {
         let addr_port;
         match self {
             Addr::IpV4((addr, port)) => {
@@ -191,6 +197,7 @@ impl Addr {
             }
         }
         stream.write_u16(addr_port).await?;
+        stream.flush().await?;
         Ok(())
     }
 

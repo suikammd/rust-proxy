@@ -1,6 +1,6 @@
 use std::{
     convert::{TryFrom, TryInto},
-    io::{ErrorKind, Read},
+    io::{BufRead, ErrorKind, Read},
     net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
     sync::Arc,
 };
@@ -8,7 +8,7 @@ use std::{
 use bytes::{BufMut, BytesMut};
 use futures::{stream::SplitSink, FutureExt, SinkExt, StreamExt, TryFutureExt};
 use tokio::{
-    io::{self, copy_bidirectional, AsyncReadExt, AsyncWriteExt, BufReader, BufWriter},
+    io::{self, copy_bidirectional, AsyncRead, AsyncReadExt, AsyncWriteExt, BufReader, BufWriter},
     net::{TcpListener, TcpStream, ToSocketAddrs},
 };
 use tokio_tungstenite::{connect_async, tungstenite::Message, MaybeTlsStream, WebSocketStream};
@@ -83,9 +83,12 @@ impl Client {
     }
 
     async fn socks5_handshake(stream: &mut TcpStream) -> Result<(Command, Addr), CustomError> {
-        let mut header = vec![0u8; 2];
+        let (input_read, input_write) = stream.split();
+        let mut input_read = BufReader::new(input_read);
+        let mut input_write = BufWriter::new(input_write);
 
-        stream.read_exact(&mut header).await?;
+        let mut header = vec![0u8; 2];
+        input_read.read_exact(&mut header).await?;
         let socks_type = header[0];
         // validate socks type
         if socks_type != 0x05 {
@@ -93,7 +96,7 @@ impl Client {
         }
         let method_len = header[1];
         let mut methods = vec![0u8; method_len as usize];
-        stream.read_exact(&mut methods).await?;
+        input_read.read_exact(&mut methods).await?;
 
         // validate methods
         // only support no auth for now
@@ -102,16 +105,21 @@ impl Client {
             return Err(CustomError::UnsupportedMethodType);
         }
 
-        stream.write_all(&[0x05, 0x00]).await?;
-        let (cmd, addr) = Client::get_cmd_addr(stream).await?;
-        stream.write_u8(0x05).await?;
-        stream.write_u8(RepCode::Success.into()).await?;
-        stream.write_u8(0x00).await?;
-        addr.encode(stream).await?;
+        input_write.write_all(&[0x05, 0x00]).await?;
+        input_write.flush().await?;
+        let (cmd, addr) = Client::get_cmd_addr(input_read).await?;
+        input_write.write_u8(0x05).await?;
+        input_write.write_u8(RepCode::Success.into()).await?;
+        input_write.write_u8(0x00).await?;
+        addr.encode(input_write).await?;
+
         Ok((cmd, addr))
     }
 
-    async fn get_cmd_addr(stream: &mut TcpStream) -> SocksResult<(Command, Addr)> {
+    async fn get_cmd_addr<T>(mut stream: T) -> SocksResult<(Command, Addr)>
+    where
+        T: AsyncRead + Unpin,
+    {
         let mut header = [0u8; 3];
         stream.read_exact(&mut header).await?;
         if header[0] != 0x05 {
