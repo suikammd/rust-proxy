@@ -11,12 +11,15 @@ futures = "0"
 tokio-socks = "0.5.1"
 thiserror = "1"
 structopt = { version = "0.3", default-features = false }
-tokio-tungstenite = "*"
+tokio-tungstenite = { version = "*", features = ["rustls-tls"] }
 futures-util = { version = "0.3", default-features = false, features = ["async-await", "sink", "std"] }
 futures-channel = "0.3"
-tungstenite = { version = "0.15.0", default-features = false }
+tungstenite = { version = "*", default-features = false }
 url = "2"
 bytes = "1.0.1"
+rustls-pemfile = "*"
+tokio-rustls = "*"
+rustls = "*"
 
 [[bin]]
 name = "server"

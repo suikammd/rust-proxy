@@ -21,6 +21,6 @@ input: listen_addr(server listens at this addr), proxy_addr(server will proxy re
     | ---- | ---- | -------- |
     | 0x00 | 2    | 动态     |
 
-    
+
     then, server will combine request stream with proxy stream
 

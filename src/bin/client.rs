@@ -7,7 +7,7 @@ use structopt::StructOpt;
 struct ClientOpt {
     #[structopt(default_value = "127.0.0.1:8081", long)]
     listen_addr: String,
-    #[structopt(default_value = "127.0.0.1:8080", long)]
+    #[structopt(default_value = "ws.suikammd.com:8080", long)]
     proxy_addr: String,
 }
 

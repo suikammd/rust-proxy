@@ -1,4 +1,5 @@
 use std::io;
+use rustls::TLSError;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -21,6 +22,8 @@ pub enum CustomError {
     InvalidDomain,
     #[error("data store disconnected `{0}`")]
     Disconnect(#[from] io::Error),
+    #[error("tls error")]
+    TLSError(#[from] TLSError),
     #[error("tungstenite error")]
     TungsteniteError(#[from] tokio_tungstenite::tungstenite::Error),
     #[error("the data for key `{0}` is not available")]

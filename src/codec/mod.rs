@@ -11,8 +11,6 @@ use tokio::{
 
 use crate::error::{CustomError, SocksResult};
 
-const SOCKS5_VERSION: u8 = 0x05;
-
 pub enum MethodType {
     NoAuth,
     UserPass,

@@ -1,17 +1,13 @@
-use std::{
-    convert::{TryFrom, TryInto},
-    io::{BufRead, ErrorKind, Read},
-    net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
-    sync::Arc,
-};
+use std::convert::TryFrom;
+use std::sync::Arc;
 
-use bytes::{BufMut, BytesMut};
-use futures::{stream::SplitSink, FutureExt, SinkExt, StreamExt, TryFutureExt};
+use bytes::BytesMut;
+use futures::{FutureExt, SinkExt, StreamExt};
 use tokio::{
-    io::{self, copy_bidirectional, AsyncRead, AsyncReadExt, AsyncWriteExt, BufReader, BufWriter},
-    net::{TcpListener, TcpStream, ToSocketAddrs},
+    io::{AsyncRead, AsyncReadExt, AsyncWriteExt, BufReader, BufWriter},
+    net::{TcpListener, TcpStream},
 };
-use tokio_tungstenite::{connect_async, tungstenite::Message, MaybeTlsStream, WebSocketStream};
+use tokio_tungstenite::{connect_async, tungstenite::Message};
 use url::Url;
 
 use crate::{
@@ -66,7 +62,6 @@ impl Client {
         let (input_read, input_write) = inbound.split();
         let (mut output_write, output_read) = ws_stream.split();
         let mut input_read = BufReader::new(input_read);
-        // let mut input_write = BufWriter::new(input_write);
 
         // send connect packet
         let mut bytes = BytesMut::new();

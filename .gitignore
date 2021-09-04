@@ -1,1 +1,3 @@
 /target
+/src/server/fullchain.pem
+/src/server/private.pem
