@@ -1,0 +1,11 @@
+version: '2.4'
+services:
+  proxy-client:
+    image: losuika/proxy:latest
+    container_name: proxy-client
+    restart: always
+    network_mode: "host"
+    environment:
+      - LISTEN=127.0.0.1:8081
+      - PROXY=proxy_addr:2053
+      - MODE=client

@@ -1,0 +1,14 @@
+version: '2.4'
+services:
+  proxy-server:
+    image: losuika/proxy:latest
+    container_name: proxy-server
+    restart: always
+    network_mode: "host"
+    volumes:
+      - ./src/server:/usr/src/proxy/cert
+    environment:
+      - LISTEN=127.0.0.1:2053
+      - FULLCHAIN=/usr/src/proxy/cert/fullchain.pem
+      - PRIVATE_KEY=/usr/src/proxy/cert/private.pem
+      - MODE=server

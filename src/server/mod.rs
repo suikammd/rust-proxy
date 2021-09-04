@@ -58,11 +58,11 @@ impl Server {
 
 async fn serve(inbound: TcpStream, acceptor: TlsAcceptor) -> Result<(), CustomError> {
     // convert to tls stream
-    let mut inbound = acceptor.accept(inbound).await?;
+    let inbound = acceptor.accept(inbound).await?;
     // convert to websocket stream
     let ws_stream = tokio_tungstenite::accept_async(inbound).await?;
     // get connect addrs from connect packet
-    let (mut input_write, mut input_read) = ws_stream.split();
+    let (input_write, mut input_read) = ws_stream.split();
     let addrs: Vec<SocketAddr> = match input_read.try_next().await {
         Ok(Some(msg)) => {
             let data = msg.into_data();
@@ -80,8 +80,8 @@ async fn serve(inbound: TcpStream, acceptor: TlsAcceptor) -> Result<(), CustomEr
 
     let mut target = TcpStream::connect(&addrs[..]).await?;
     println!("connect to proxy addrs successfully");
-    let (mut output_read, mut output_write) = target.split();
-    let mut output_read = BufReader::new(output_read);
+    let (output_read, output_write) = target.split();
+    let output_read = BufReader::new(output_read);
     // let mut output_write = BufWriter::new(output_write);
 
     let (_, _) = tokio::join!(

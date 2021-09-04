@@ -34,7 +34,6 @@ impl Client {
 
     pub async fn run(&self) -> Result<(), Box<dyn std::error::Error>> {
         let listener = TcpListener::bind(self.listen_addr.clone()).await?;
-        println!("client listen on: {}", self.listen_addr);
         while let Ok((inbound, _)) = listener.accept().await {
             let serve = Client::serve(inbound, self.server_url.clone()).map(|r| {
                 if let Err(e) = r {
