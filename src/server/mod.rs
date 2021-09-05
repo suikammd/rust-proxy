@@ -1,6 +1,6 @@
 use std::{net::SocketAddr, path::PathBuf, sync::Arc};
 
-use crate::{codec::Addr, error::{self, CustomError, SocksResult}, util::{
+use crate::{codec::Addr, error::{ProxyError, ProxyResult}, util::{
         copy::{server_read_from_tcp_to_websocket, server_read_from_websocket_to_tcp},
         ssl::{load_certs, load_private_key},
     }};
@@ -23,7 +23,10 @@ impl Server {
         listen_addr: String,
         cert_pem_path: String,
         cert_key_path: String,
-    ) -> SocksResult<Self> {
+    ) -> ProxyResult<Self> {
+        if listen_addr.is_empty() || cert_pem_path.is_empty() || cert_key_path.is_empty() {
+            return Err(ProxyError::EmptyParams)
+        }
         let abs_cert_path = std::fs::canonicalize(PathBuf::from(cert_pem_path.as_str()))?;
         let abs_key_path = std::fs::canonicalize(PathBuf::from(cert_key_path.as_str()))?;
         let certs = load_certs(abs_cert_path)?;
@@ -53,7 +56,7 @@ impl Server {
     }
 }
 
-async fn serve(inbound: TcpStream, acceptor: TlsAcceptor) -> Result<(), CustomError> {
+async fn serve(inbound: TcpStream, acceptor: TlsAcceptor) -> ProxyResult<()> {
     // convert to tls stream
     let inbound = acceptor.accept(inbound).await?;
     // convert to websocket stream

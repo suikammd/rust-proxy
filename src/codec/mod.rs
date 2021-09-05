@@ -10,7 +10,7 @@ use tokio::{
     net::TcpStream,
 };
 
-use crate::error::{CustomError, SocksResult};
+use crate::error::{ProxyError, ProxyResult};
 
 pub enum MethodType {
     NoAuth,
@@ -18,12 +18,12 @@ pub enum MethodType {
 }
 
 impl TryFrom<u8> for MethodType {
-    type Error = CustomError;
-    fn try_from(orig: u8) -> SocksResult<Self> {
+    type Error = ProxyError;
+    fn try_from(orig: u8) -> ProxyResult<Self> {
         match orig {
             0 => Ok(MethodType::NoAuth),
             2 => Ok(MethodType::UserPass),
-            _ => Err(CustomError::UnsupportedMethodType),
+            _ => Err(ProxyError::UnsupportedMethodType),
         }
     }
 }
@@ -36,13 +36,13 @@ pub enum Command {
 }
 
 impl TryFrom<u8> for Command {
-    type Error = CustomError;
-    fn try_from(value: u8) -> SocksResult<Self> {
+    type Error = ProxyError;
+    fn try_from(value: u8) -> ProxyResult<Self> {
         match value {
             1 => Ok(Command::Connect),
             2 => Ok(Command::Bind),
             3 => Ok(Command::Udp),
-            _ => Err(CustomError::UnsupportedCommand),
+            _ => Err(ProxyError::UnsupportedCommand),
         }
     }
 }
@@ -72,7 +72,7 @@ pub enum RepCode {
 }
 
 impl TryFrom<u8> for RepCode {
-    type Error = CustomError;
+    type Error = ProxyError;
     fn try_from(orig: u8) -> Result<Self, Self::Error> {
         match orig {
             0 => Ok(RepCode::Success),
@@ -84,7 +84,7 @@ impl TryFrom<u8> for RepCode {
             6 => Ok(RepCode::TTLTimeout),
             7 => Ok(RepCode::UnsupportedCommand),
             8 => Ok(RepCode::UnsupportedAddrType),
-            _ => Err(CustomError::InvalidRepCode),
+            _ => Err(ProxyError::InvalidRepCode),
         }
     }
 }
@@ -114,7 +114,7 @@ pub enum Addr {
 }
 
 impl TryFrom<Addr> for Vec<SocketAddr> {
-    type Error = crate::error::CustomError;
+    type Error = crate::error::ProxyError;
     fn try_from(a: Addr) -> Result<Vec<SocketAddr>, Self::Error> {
         info!("addr is {:?}", a);
         match a {
@@ -137,7 +137,7 @@ impl TryFrom<Addr> for Vec<SocketAddr> {
 }
 
 impl Addr {
-    pub async fn decode<T>(mut stream: T) -> SocksResult<Self>
+    pub async fn decode<T>(mut stream: T) -> ProxyResult<Self>
     where
         T: AsyncRead + Unpin,
     {
@@ -169,11 +169,11 @@ impl Addr {
                 let port = stream.read_u16().await?;
                 Ok(Addr::IpV6((addr, port)))
             }
-            _ => Err(CustomError::UnsupportedAddrType),
+            _ => Err(ProxyError::UnsupportedAddrType),
         }
     }
 
-    pub async fn encode<T>(&self, mut stream: BufWriter<T>) -> SocksResult<()>
+    pub async fn encode<T>(&self, mut stream: BufWriter<T>) -> ProxyResult<()>
     where
         T: AsyncWrite + Unpin,
     {
@@ -227,13 +227,13 @@ impl Addr {
         }
     }
 
-    pub fn from_bytes(bytes: Vec<u8>) -> Result<Vec<SocketAddr>, CustomError> {
+    pub fn from_bytes(bytes: Vec<u8>) -> Result<Vec<SocketAddr>, ProxyError> {
         info!("conenct packes {:?}", bytes);
         let addr_type = bytes[0] & 0x0f;
         let cmd = bytes[0] >> 4;
 
         if cmd != 1 {
-            return Err(CustomError::UnsupportedCommand);
+            return Err(ProxyError::UnsupportedCommand);
         }
 
         let port = unsafe { std::mem::transmute::<[u8; 2], u16>([bytes[2], bytes[1]]) };
@@ -265,10 +265,10 @@ impl Addr {
         addr.try_into()
     }
 
-    pub async fn parse_addrs(stream: &mut TcpStream) -> Result<Vec<SocketAddr>, CustomError> {
+    pub async fn parse_addrs(stream: &mut TcpStream) -> Result<Vec<SocketAddr>, ProxyError> {
         let command = Command::try_from(stream.read_u8().await?)?;
         if command != Command::Connect {
-            return Err(CustomError::UnsupportedCommand);
+            return Err(ProxyError::UnsupportedCommand);
         }
 
         let addr = Addr::decode(stream).await?;

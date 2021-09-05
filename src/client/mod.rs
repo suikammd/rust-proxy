@@ -15,7 +15,7 @@ use crate::{
     codec::{
         Addr, {Command, RepCode},
     },
-    error::{CustomError, SocksResult},
+    error::{ProxyError, ProxyResult},
     util::copy::{client_read_from_tcp_to_websocket, client_read_from_websocket_to_tcp},
 };
 
@@ -25,7 +25,10 @@ pub struct Client {
 }
 
 impl Client {
-    pub fn new(listen_addr: String, proxy_addr: String) -> SocksResult<Self> {
+    pub fn new(listen_addr: String, proxy_addr: String) -> ProxyResult<Self> {
+        if listen_addr.is_empty() || proxy_addr.is_empty() {
+            return Err(ProxyError::EmptyParams)
+        }
         let server_url = url::Url::parse(format!("wss://{}", proxy_addr).as_str())?;
         Ok(Self {
             listen_addr,
@@ -46,7 +49,7 @@ impl Client {
         Ok(())
     }
 
-    async fn serve(mut inbound: TcpStream, server_url: Arc<Url>) -> Result<(), CustomError> {
+    async fn serve(mut inbound: TcpStream, server_url: Arc<Url>) -> ProxyResult<()> {
         info!("Get new connections");
 
         // socks5 handshake: decide which method to use
@@ -54,14 +57,12 @@ impl Client {
         info!("cmd {:?} addr {:?}", cmd, addr);
         info!("handshake successfully");
 
-        let (ws_stream, _) = connect_async(server_url.as_ref())
-            .await
-            .expect("Failed to connect");
+        let (ws_stream, _) = connect_async(server_url.as_ref()).await?;
         info!("WebSocket handshake has been successfully completed");
 
         let (input_read, input_write) = inbound.split();
         let (mut output_write, output_read) = ws_stream.split();
-        let mut input_read = BufReader::new(input_read);
+        let input_read = BufReader::new(input_read);
 
         // send connect packet
         let mut bytes = BytesMut::new();
@@ -77,7 +78,7 @@ impl Client {
         Ok(())
     }
 
-    async fn socks5_handshake(stream: &mut TcpStream) -> Result<(Command, Addr), CustomError> {
+    async fn socks5_handshake(stream: &mut TcpStream) -> ProxyResult<(Command, Addr)> {
         let (input_read, input_write) = stream.split();
         let mut input_read = BufReader::new(input_read);
         let mut input_write = BufWriter::new(input_write);
@@ -87,7 +88,7 @@ impl Client {
         let socks_type = header[0];
         // validate socks type
         if socks_type != 0x05 {
-            return Err(CustomError::UnsupportedSocksType(header[0]));
+            return Err(ProxyError::UnsupportedSocksType(header[0]));
         }
         let method_len = header[1];
         let mut methods = vec![0u8; method_len as usize];
@@ -97,7 +98,7 @@ impl Client {
         // only support no auth for now
         let support = methods.into_iter().any(|method| method == 0);
         if !support {
-            return Err(CustomError::UnsupportedMethodType);
+            return Err(ProxyError::UnsupportedMethodType);
         }
 
         input_write.write_all(&[0x05, 0x00]).await?;
@@ -111,19 +112,19 @@ impl Client {
         Ok((cmd, addr))
     }
 
-    async fn get_cmd_addr<T>(mut stream: T) -> SocksResult<(Command, Addr)>
+    async fn get_cmd_addr<T>(mut stream: T) -> ProxyResult<(Command, Addr)>
     where
         T: AsyncRead + Unpin,
     {
         let mut header = [0u8; 3];
         stream.read_exact(&mut header).await?;
         if header[0] != 0x05 {
-            return Err(CustomError::UnsupportedSocksType(header[0]));
+            return Err(ProxyError::UnsupportedSocksType(header[0]));
         }
 
         let cmd = Command::try_from(header[1])?;
         if cmd != Command::Connect {
-            return Err(CustomError::UnsupportedCommand);
+            return Err(ProxyError::UnsupportedCommand);
         }
 
         let addr = Addr::decode(stream).await?;

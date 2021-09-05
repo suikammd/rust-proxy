@@ -11,12 +11,12 @@ use tokio::{
 use tokio_rustls::server::TlsStream;
 use tokio_tungstenite::{tungstenite::Message, MaybeTlsStream, WebSocketStream};
 
-use crate::error::CustomError;
+use crate::error::{ProxyResult};
 
 pub async fn client_read_from_tcp_to_websocket<T>(
     mut tcp_stream: T,
     mut websocket_sink: SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>,
-) -> Result<(), CustomError>
+) -> ProxyResult<()>
 where
     T: AsyncRead + Unpin,
 {
@@ -37,7 +37,7 @@ where
 pub async fn server_read_from_tcp_to_websocket<T>(
     mut tcp_stream: T,
     mut websocket_sink: SplitSink<WebSocketStream<TlsStream<TcpStream>>, Message>,
-) -> Result<(), CustomError>
+) -> ProxyResult<()>
 where
     T: AsyncRead + Unpin,
 {
@@ -58,7 +58,7 @@ where
 pub async fn client_read_from_websocket_to_tcp(
     mut tcp_stream: WriteHalf<'_>,
     mut websocket_stream: SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>,
-) -> Result<(), CustomError> {
+) -> ProxyResult<()> {
     while let Some(msg) = websocket_stream.next().await {
         let msg = msg?.into_data();
         tcp_stream.write_all(&msg).await?;
@@ -69,7 +69,7 @@ pub async fn client_read_from_websocket_to_tcp(
 pub async fn server_read_from_websocket_to_tcp(
     mut tcp_stream: WriteHalf<'_>,
     mut websocket_stream: SplitStream<WebSocketStream<TlsStream<TcpStream>>>,
-) -> Result<(), CustomError> {
+) -> ProxyResult<()> {
     while let Some(msg) = websocket_stream.next().await {
         let msg = msg?.into_data();
         tcp_stream.write_all(&msg).await?;

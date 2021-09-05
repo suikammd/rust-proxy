@@ -3,9 +3,11 @@ use rustls::TLSError;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
-pub enum CustomError {
-    #[error("parse server url error")]
+pub enum ProxyError {
+    #[error("parse url error")]
     UrlParseError(#[from] url::ParseError),
+    // socks5 error
+    // start
     #[error("socks type `{0}` not supported")]
     UnsupportedSocksType(u8),
     #[error("method type not supported")]
@@ -16,10 +18,13 @@ pub enum CustomError {
     UnsupportedCommand,
     #[error("invalid rep code")]
     InvalidRepCode,
-    #[error("invalid packet type")]
-    InvalidPacketType,
-    #[error("invalid domain")]
-    InvalidDomain,
+    // end
+    #[error("empty params")]
+    EmptyParams,
+    #[error("invalid private key")]
+    InvalidPrivateKey,
+    #[error("invalid cert")]
+    InvalidCert,
     #[error("data store disconnected `{0}`")]
     Disconnect(#[from] io::Error),
     #[error("tls error")]
@@ -34,4 +39,4 @@ pub enum CustomError {
     Unknown,
 }
 
-pub type SocksResult<T> = Result<T, CustomError>;
+pub type ProxyResult<T> = Result<T, ProxyError>;
