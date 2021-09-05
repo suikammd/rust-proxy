@@ -19,6 +19,8 @@ pub enum ProxyError {
     #[error("invalid rep code")]
     InvalidRepCode,
     // end
+    #[error("build client http request error")]
+    HttpError(#[from] http::Error),
     #[error("empty params")]
     EmptyParams,
     #[error("invalid private key")]

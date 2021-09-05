@@ -1,10 +1,15 @@
 use std::{net::SocketAddr, path::PathBuf, sync::Arc};
 
-use crate::{codec::Addr, error::{ProxyError, ProxyResult}, util::{
+use crate::{
+    codec::Addr,
+    error::{ProxyError, ProxyResult},
+    util::{
         copy::{server_read_from_tcp_to_websocket, server_read_from_websocket_to_tcp},
         ssl::{load_certs, load_private_key},
-    }};
+    },
+};
 use futures::{FutureExt, StreamExt, TryStreamExt};
+use http::Response;
 use log::{error, info};
 use rustls::NoClientAuth;
 use tokio::{
@@ -12,10 +17,12 @@ use tokio::{
     net::{TcpListener, TcpStream},
 };
 use tokio_rustls::TlsAcceptor;
+use tokio_tungstenite::tungstenite::handshake::server::NoCallback;
 
 pub struct Server {
     listen_addr: String,
     acceptor: TlsAcceptor,
+    authorization: Arc<String>,
 }
 
 impl Server {
@@ -23,9 +30,10 @@ impl Server {
         listen_addr: String,
         cert_pem_path: String,
         cert_key_path: String,
+        authorization: String,
     ) -> ProxyResult<Self> {
-        if listen_addr.is_empty() || cert_pem_path.is_empty() || cert_key_path.is_empty() {
-            return Err(ProxyError::EmptyParams)
+        if listen_addr.is_empty() || cert_pem_path.is_empty() || cert_key_path.is_empty() || authorization.is_empty() {
+            return Err(ProxyError::EmptyParams);
         }
         let abs_cert_path = std::fs::canonicalize(PathBuf::from(cert_pem_path.as_str()))?;
         let abs_key_path = std::fs::canonicalize(PathBuf::from(cert_key_path.as_str()))?;
@@ -38,6 +46,7 @@ impl Server {
         Ok(Self {
             listen_addr,
             acceptor,
+            authorization: Arc::new(authorization),
         })
     }
 
@@ -45,9 +54,9 @@ impl Server {
         // TODO: change to websocket server
         let listener = TcpListener::bind(self.listen_addr).await?;
         while let Ok((inbound, _)) = listener.accept().await {
-            let serve = serve(inbound, self.acceptor.clone()).map(|r| {
+            let serve = serve(inbound, self.authorization.clone(), self.acceptor.clone()).map(|r| {
                 if let Err(e) = r {
-                    error!("Failed to transfer; error={}", e);
+                    error!("Failed to transfer; error={:?}", e);
                 }
             });
             tokio::spawn(serve);
@@ -56,11 +65,29 @@ impl Server {
     }
 }
 
-async fn serve(inbound: TcpStream, acceptor: TlsAcceptor) -> ProxyResult<()> {
+async fn serve(inbound: TcpStream, authorization: Arc<String>, acceptor: TlsAcceptor) -> ProxyResult<()> {
+    info!("get new connections");
     // convert to tls stream
     let inbound = acceptor.accept(inbound).await?;
     // convert to websocket stream
-    let ws_stream = tokio_tungstenite::accept_async(inbound).await?;
+    // let ws_stream = tokio_tungstenite::accept_async(inbound).await?;
+    let ws_stream = tokio_tungstenite::accept_hdr_async(
+        inbound,
+        |req: &http::Request<()>,
+         res: http::Response<()>|
+         -> Result<http::Response<()>, http::Response<Option<String>>> {
+            if req.headers().get("Authorization").map(|x| x.as_bytes()) != Some(authorization.as_bytes()) {
+                info!("incorrect auth");
+                return Err(http::Response::new(Some(
+                    "invalid authorization".to_string(),
+                )));
+            }
+            info!("correct auth");
+            Ok(res)
+        },
+    )
+    .await?;
+    info!("build websocket stream successfully");
     // get connect addrs from connect packet
     let (input_write, mut input_read) = ws_stream.split();
     let addrs: Vec<SocketAddr> = match input_read.try_next().await {
@@ -82,7 +109,6 @@ async fn serve(inbound: TcpStream, acceptor: TlsAcceptor) -> ProxyResult<()> {
     info!("connect to proxy addrs successfully");
     let (output_read, output_write) = target.split();
     let output_read = BufReader::new(output_read);
-    // let mut output_write = BufWriter::new(output_write);
 
     let (_, _) = tokio::join!(
         server_read_from_tcp_to_websocket(output_read, input_write),

@@ -3,12 +3,16 @@ use std::sync::Arc;
 
 use bytes::BytesMut;
 use futures::{FutureExt, SinkExt, StreamExt};
+use http::Request;
 use log::{error, info};
 use tokio::{
     io::{AsyncRead, AsyncReadExt, AsyncWriteExt, BufReader, BufWriter},
     net::{TcpListener, TcpStream},
 };
-use tokio_tungstenite::{connect_async, tungstenite::Message};
+use tokio_tungstenite::{
+    connect_async,
+    tungstenite::{client::IntoClientRequest, Message},
+};
 use url::Url;
 
 use crate::{
@@ -21,27 +25,32 @@ use crate::{
 
 pub struct Client {
     listen_addr: String,
-    server_url: Arc<Url>,
+    server_url: Arc<String>,
+    authorization: Arc<String>,
 }
 
 impl Client {
-    pub fn new(listen_addr: String, proxy_addr: String) -> ProxyResult<Self> {
-        if listen_addr.is_empty() || proxy_addr.is_empty() {
-            return Err(ProxyError::EmptyParams)
+    pub fn new(
+        listen_addr: String,
+        proxy_addr: String,
+        authorization: String,
+    ) -> ProxyResult<Self> {
+        if proxy_addr.is_empty() {
+            return Err(ProxyError::EmptyParams);
         }
-        let server_url = url::Url::parse(format!("wss://{}", proxy_addr).as_str())?;
         Ok(Self {
             listen_addr,
-            server_url: Arc::new(server_url),
+            server_url: Arc::new(format!("wss://{}", proxy_addr)),
+            authorization: Arc::new(authorization),
         })
     }
 
     pub async fn run(&self) -> Result<(), Box<dyn std::error::Error>> {
         let listener = TcpListener::bind(self.listen_addr.clone()).await?;
         while let Ok((inbound, _)) = listener.accept().await {
-            let serve = Client::serve(inbound, self.server_url.clone()).map(|r| {
+            let serve = Client::serve(inbound, self.authorization.clone(), self.server_url.clone()).map(|r| {
                 if let Err(e) = r {
-                    error!("Failed to transfer; error={}", e);
+                    error!("Failed to transfer; error={:?}", e);
                 }
             });
             tokio::spawn(serve);
@@ -49,7 +58,7 @@ impl Client {
         Ok(())
     }
 
-    async fn serve(mut inbound: TcpStream, server_url: Arc<Url>) -> ProxyResult<()> {
+    async fn serve(mut inbound: TcpStream, authorization: Arc<String>, server_url: Arc<String>) -> ProxyResult<()> {
         info!("Get new connections");
 
         // socks5 handshake: decide which method to use
@@ -57,7 +66,12 @@ impl Client {
         info!("cmd {:?} addr {:?}", cmd, addr);
         info!("handshake successfully");
 
-        let (ws_stream, _) = connect_async(server_url.as_ref()).await?;
+        let req = Request::builder()
+            .uri(server_url.as_ref())
+            .header("Authorization", authorization.as_ref())
+            .body(())?;
+        info!("get req {:?}", req);
+        let (ws_stream, _) = connect_async(req).await?;
         info!("WebSocket handshake has been successfully completed");
 
         let (input_read, input_write) = inbound.split();

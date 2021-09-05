@@ -12,3 +12,4 @@ services:
       - FULLCHAIN=/usr/src/proxy/cert/fullchain.pem
       - PRIVATE_KEY=/usr/src/proxy/cert/private.pem
       - MODE=server
+      - AUTHORIZATION=abc

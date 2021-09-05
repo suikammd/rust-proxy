@@ -9,3 +9,4 @@ services:
       - LISTEN=127.0.0.1:8081
       - PROXY=proxy_addr:2053
       - MODE=client
+      - AUTHORIZATION=abc

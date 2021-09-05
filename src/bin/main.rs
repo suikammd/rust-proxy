@@ -38,6 +38,8 @@ struct Opt {
     proxy_addr: String,
     #[structopt(short = "m", long = "mode", default_value = "server")]
     mode: Mode,
+    #[structopt(short = "t", long = "authorization", default_value = "")]
+    authorization: String,
 }
 
 #[tokio::main]
@@ -47,12 +49,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     match opt.mode {
         Mode::Server => {
             info!("server listen on {}", opt.listen_addr);
-            let server = Server::new(opt.listen_addr, opt.fullchain_path, opt.private_key_path)?;
+            let server = Server::new(opt.listen_addr, opt.fullchain_path, opt.private_key_path, opt.authorization)?;
             server.run().await
         }
         Mode::Client => {
             info!("client listen on {}", opt.listen_addr);
-            let client = Client::new(opt.listen_addr, opt.proxy_addr)?;
+            let client = Client::new(opt.listen_addr, opt.proxy_addr, opt.authorization)?;
             client.run().await
         }
     }

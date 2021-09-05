@@ -22,6 +22,7 @@ tokio-rustls = "*"
 rustls = "*"
 log = "0.4.0"
 env_logger = "*"
+http = "*"
 
 [[bin]]
 name = "ss"
