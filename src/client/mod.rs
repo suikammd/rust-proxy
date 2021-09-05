@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use bytes::BytesMut;
 use futures::{FutureExt, SinkExt, StreamExt};
+use log::{error, info};
 use tokio::{
     io::{AsyncRead, AsyncReadExt, AsyncWriteExt, BufReader, BufWriter},
     net::{TcpListener, TcpStream},
@@ -37,7 +38,7 @@ impl Client {
         while let Ok((inbound, _)) = listener.accept().await {
             let serve = Client::serve(inbound, self.server_url.clone()).map(|r| {
                 if let Err(e) = r {
-                    println!("Failed to transfer; error={}", e);
+                    error!("Failed to transfer; error={}", e);
                 }
             });
             tokio::spawn(serve);
@@ -46,17 +47,17 @@ impl Client {
     }
 
     async fn serve(mut inbound: TcpStream, server_url: Arc<Url>) -> Result<(), CustomError> {
-        println!("Get new connections");
+        info!("Get new connections");
 
         // socks5 handshake: decide which method to use
         let (cmd, addr) = Client::socks5_handshake(&mut inbound).await?;
-        println!("cmd {:?} addr {:?}", cmd, addr);
-        println!("handshake successfully");
+        info!("cmd {:?} addr {:?}", cmd, addr);
+        info!("handshake successfully");
 
         let (ws_stream, _) = connect_async(server_url.as_ref())
             .await
             .expect("Failed to connect");
-        println!("WebSocket handshake has been successfully completed");
+        info!("WebSocket handshake has been successfully completed");
 
         let (input_read, input_write) = inbound.split();
         let (mut output_write, output_read) = ws_stream.split();
@@ -66,7 +67,7 @@ impl Client {
         let mut bytes = BytesMut::new();
         addr.to_bytes(&cmd, &mut bytes);
         output_write.send(Message::binary(bytes.to_vec())).await?;
-        println!("send connect packet successfully");
+        info!("send connect packet successfully");
 
         let (_, _) = tokio::join!(
             client_read_from_tcp_to_websocket(input_read, output_write),
@@ -126,7 +127,7 @@ impl Client {
         }
 
         let addr = Addr::decode(stream).await?;
-        println!("addr {:?}", addr);
+        info!("addr {:?}", addr);
         Ok((cmd, addr))
     }
 }

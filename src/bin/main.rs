@@ -1,3 +1,6 @@
+#[macro_use]
+extern crate log;
+
 use std::str::FromStr;
 
 use ss::{client::Client, server::Server};
@@ -39,15 +42,16 @@ struct Opt {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    env_logger::init();
     let opt = Opt::from_args();
     match opt.mode {
         Mode::Server => {
-            println!("server listen on {}", opt.listen_addr);
+            info!("server listen on {}", opt.listen_addr);
             let server = Server::new(opt.listen_addr, opt.fullchain_path, opt.private_key_path)?;
             server.run().await
         }
         Mode::Client => {
-            println!("client listen on {}", opt.listen_addr);
+            info!("client listen on {}", opt.listen_addr);
             let client = Client::new(opt.listen_addr, opt.proxy_addr)?;
             client.run().await
         }

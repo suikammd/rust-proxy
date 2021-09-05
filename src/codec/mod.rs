@@ -4,6 +4,7 @@ use std::{
 };
 
 use bytes::{BufMut, BytesMut};
+use log::info;
 use tokio::{
     io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufWriter},
     net::TcpStream,
@@ -115,7 +116,7 @@ pub enum Addr {
 impl TryFrom<Addr> for Vec<SocketAddr> {
     type Error = crate::error::CustomError;
     fn try_from(a: Addr) -> Result<Vec<SocketAddr>, Self::Error> {
-        println!("addr is {:?}", a);
+        info!("addr is {:?}", a);
         match a {
             Addr::IpV4((addr, port)) => {
                 let addr = Ipv4Addr::new(addr[0], addr[1], addr[2], addr[3]);
@@ -141,13 +142,13 @@ impl Addr {
         T: AsyncRead + Unpin,
     {
         let addr_type = stream.read_u8().await?;
-        println!("addr type is {:?}", addr_type);
+        info!("addr type is {:?}", addr_type);
         match addr_type {
             1 => {
                 let mut addr = [0u8; 4];
                 stream.read_exact(&mut addr).await?;
                 let port = stream.read_u16().await?;
-                println!("addr {:?} port {:?}", addr, port);
+                info!("addr {:?} port {:?}", addr, port);
                 Ok(Addr::IpV4((addr, port)))
             }
             3 => {
@@ -205,7 +206,7 @@ impl Addr {
             Command::Bind => 2,
             Command::Udp => 3,
         };
-        println!("addr is {:?}", self);
+        info!("addr is {:?}", self);
 
         match self {
             Addr::IpV4(addr) => {
@@ -227,7 +228,7 @@ impl Addr {
     }
 
     pub fn from_bytes(bytes: Vec<u8>) -> Result<Vec<SocketAddr>, CustomError> {
-        println!("conenct packes {:?}", bytes);
+        info!("conenct packes {:?}", bytes);
         let addr_type = bytes[0] & 0x0f;
         let cmd = bytes[0] >> 4;
 
@@ -260,7 +261,7 @@ impl Addr {
             }
             _ => unreachable!(),
         }
-        println!("addr is {:?}", addr);
+        info!("addr is {:?}", addr);
         addr.try_into()
     }
 

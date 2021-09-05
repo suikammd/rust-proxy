@@ -20,6 +20,8 @@ bytes = "1.0.1"
 rustls-pemfile = "*"
 tokio-rustls = "*"
 rustls = "*"
+log = "0.4.0"
+env_logger = "*"
 
 [[bin]]
 name = "ss"

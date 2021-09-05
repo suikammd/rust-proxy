@@ -1,14 +1,11 @@
 use std::{net::SocketAddr, path::PathBuf, sync::Arc};
 
-use crate::{
-    codec::Addr,
-    error::{CustomError, SocksResult},
-    util::{
+use crate::{codec::Addr, error::{self, CustomError, SocksResult}, util::{
         copy::{server_read_from_tcp_to_websocket, server_read_from_websocket_to_tcp},
         ssl::{load_certs, load_private_key},
-    },
-};
+    }};
 use futures::{FutureExt, StreamExt, TryStreamExt};
+use log::{error, info};
 use rustls::NoClientAuth;
 use tokio::{
     io::BufReader,
@@ -47,7 +44,7 @@ impl Server {
         while let Ok((inbound, _)) = listener.accept().await {
             let serve = serve(inbound, self.acceptor.clone()).map(|r| {
                 if let Err(e) = r {
-                    println!("Failed to transfer; error={}", e);
+                    error!("Failed to transfer; error={}", e);
                 }
             });
             tokio::spawn(serve);
@@ -73,13 +70,13 @@ async fn serve(inbound: TcpStream, acceptor: TlsAcceptor) -> Result<(), CustomEr
         }
         Err(e) => {
             // TODO
-            println!("{:?}", e);
+            error!("{:?}", e);
             return Ok(());
         }
     };
 
     let mut target = TcpStream::connect(&addrs[..]).await?;
-    println!("connect to proxy addrs successfully");
+    info!("connect to proxy addrs successfully");
     let (output_read, output_write) = target.split();
     let output_read = BufReader::new(output_read);
     // let mut output_write = BufWriter::new(output_write);
