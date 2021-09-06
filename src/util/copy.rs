@@ -1,3 +1,5 @@
+use std::convert::TryInto;
+
 use futures::{
     stream::{SplitSink, SplitStream},
     SinkExt, StreamExt,
@@ -11,7 +13,7 @@ use tokio::{
 use tokio_rustls::server::TlsStream;
 use tokio_tungstenite::{tungstenite::Message, MaybeTlsStream, WebSocketStream};
 
-use crate::error::{ProxyResult};
+use crate::{codec::Packet, error::{ProxyResult}};
 
 pub async fn client_read_from_tcp_to_websocket<T>(
     mut tcp_stream: T,
@@ -30,7 +32,8 @@ where
         unsafe {
             buffer.set_len(len);
         }
-        websocket_sink.send(Message::binary(buffer)).await?;
+        log::info!("len: {}, buffer len: {}, buffer data: {:?}", len, buffer.len(), buffer);
+        websocket_sink.send(Packet::Data(buffer).try_into()?).await?;
     }
 }
 
@@ -71,8 +74,9 @@ pub async fn server_read_from_websocket_to_tcp(
     mut websocket_stream: SplitStream<WebSocketStream<TlsStream<TcpStream>>>,
 ) -> ProxyResult<()> {
     while let Some(msg) = websocket_stream.next().await {
-        let msg = msg?.into_data();
-        tcp_stream.write_all(&msg).await?;
+        if let Ok(Packet::Data(data)) = Packet::to_packet(msg?) {
+            tcp_stream.write_all(&data).await?;
+        }
     }
     Ok(())
 }

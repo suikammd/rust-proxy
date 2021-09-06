@@ -1,7 +1,7 @@
-use std::{net::SocketAddr, path::PathBuf, sync::Arc};
+use std::{convert::TryInto, net::SocketAddr, path::PathBuf, sync::Arc};
 
 use crate::{
-    codec::Addr,
+    codec::{Packet},
     error::{ProxyError, ProxyResult},
     util::{
         copy::{server_read_from_tcp_to_websocket, server_read_from_websocket_to_tcp},
@@ -9,7 +9,7 @@ use crate::{
     },
 };
 use futures::{FutureExt, StreamExt, TryStreamExt};
-use http::Response;
+
 use log::{error, info};
 use rustls::NoClientAuth;
 use tokio::{
@@ -17,7 +17,6 @@ use tokio::{
     net::{TcpListener, TcpStream},
 };
 use tokio_rustls::TlsAcceptor;
-use tokio_tungstenite::tungstenite::handshake::server::NoCallback;
 
 pub struct Server {
     listen_addr: String,
@@ -32,7 +31,11 @@ impl Server {
         cert_key_path: String,
         authorization: String,
     ) -> ProxyResult<Self> {
-        if listen_addr.is_empty() || cert_pem_path.is_empty() || cert_key_path.is_empty() || authorization.is_empty() {
+        if listen_addr.is_empty()
+            || cert_pem_path.is_empty()
+            || cert_key_path.is_empty()
+            || authorization.is_empty()
+        {
             return Err(ProxyError::EmptyParams);
         }
         let abs_cert_path = std::fs::canonicalize(PathBuf::from(cert_pem_path.as_str()))?;
@@ -54,18 +57,23 @@ impl Server {
         // TODO: change to websocket server
         let listener = TcpListener::bind(self.listen_addr).await?;
         while let Ok((inbound, _)) = listener.accept().await {
-            let serve = serve(inbound, self.authorization.clone(), self.acceptor.clone()).map(|r| {
-                if let Err(e) = r {
-                    error!("Failed to transfer; error={:?}", e);
-                }
-            });
+            let serve =
+                serve(inbound, self.authorization.clone(), self.acceptor.clone()).map(|r| {
+                    if let Err(e) = r {
+                        error!("Failed to transfer; error={:?}", e);
+                    }
+                });
             tokio::spawn(serve);
         }
         Ok(())
     }
 }
 
-async fn serve(inbound: TcpStream, authorization: Arc<String>, acceptor: TlsAcceptor) -> ProxyResult<()> {
+async fn serve(
+    inbound: TcpStream,
+    authorization: Arc<String>,
+    acceptor: TlsAcceptor,
+) -> ProxyResult<()> {
     info!("get new connections");
     // convert to tls stream
     let inbound = acceptor.accept(inbound).await?;
@@ -76,7 +84,9 @@ async fn serve(inbound: TcpStream, authorization: Arc<String>, acceptor: TlsAcce
         |req: &http::Request<()>,
          res: http::Response<()>|
          -> Result<http::Response<()>, http::Response<Option<String>>> {
-            if req.headers().get("Authorization").map(|x| x.as_bytes()) != Some(authorization.as_bytes()) {
+            if req.headers().get("Authorization").map(|x| x.as_bytes())
+                != Some(authorization.as_bytes())
+            {
                 info!("incorrect auth");
                 return Err(http::Response::new(Some(
                     "invalid authorization".to_string(),
@@ -92,8 +102,11 @@ async fn serve(inbound: TcpStream, authorization: Arc<String>, acceptor: TlsAcce
     let (input_write, mut input_read) = ws_stream.split();
     let addrs: Vec<SocketAddr> = match input_read.try_next().await {
         Ok(Some(msg)) => {
-            let data = msg.into_data();
-            Addr::from_bytes(data)?
+            if let Ok(Packet::Connect(addr)) = Packet::to_packet(msg) {
+                addr.try_into()?
+            } else {
+                return Ok(());
+            }
         }
         Ok(None) => {
             return Ok(());

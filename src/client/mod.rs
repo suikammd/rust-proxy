@@ -1,7 +1,6 @@
-use std::convert::TryFrom;
+use std::convert::{TryFrom, TryInto};
 use std::sync::Arc;
 
-use bytes::BytesMut;
 use futures::{FutureExt, SinkExt, StreamExt};
 use http::Request;
 use log::{error, info};
@@ -9,15 +8,11 @@ use tokio::{
     io::{AsyncRead, AsyncReadExt, AsyncWriteExt, BufReader, BufWriter},
     net::{TcpListener, TcpStream},
 };
-use tokio_tungstenite::{
-    connect_async,
-    tungstenite::{client::IntoClientRequest, Message},
-};
-use url::Url;
+use tokio_tungstenite::connect_async;
 
 use crate::{
     codec::{
-        Addr, {Command, RepCode},
+        Addr, Packet, {Command, RepCode},
     },
     error::{ProxyError, ProxyResult},
     util::copy::{client_read_from_tcp_to_websocket, client_read_from_websocket_to_tcp},
@@ -48,17 +43,22 @@ impl Client {
     pub async fn run(&self) -> Result<(), Box<dyn std::error::Error>> {
         let listener = TcpListener::bind(self.listen_addr.clone()).await?;
         while let Ok((inbound, _)) = listener.accept().await {
-            let serve = Client::serve(inbound, self.authorization.clone(), self.server_url.clone()).map(|r| {
-                if let Err(e) = r {
-                    error!("Failed to transfer; error={:?}", e);
-                }
-            });
+            let serve = Client::serve(inbound, self.authorization.clone(), self.server_url.clone())
+                .map(|r| {
+                    if let Err(e) = r {
+                        error!("Failed to transfer; error={:?}", e);
+                    }
+                });
             tokio::spawn(serve);
         }
         Ok(())
     }
 
-    async fn serve(mut inbound: TcpStream, authorization: Arc<String>, server_url: Arc<String>) -> ProxyResult<()> {
+    async fn serve(
+        mut inbound: TcpStream,
+        authorization: Arc<String>,
+        server_url: Arc<String>,
+    ) -> ProxyResult<()> {
         info!("Get new connections");
 
         // socks5 handshake: decide which method to use
@@ -79,9 +79,7 @@ impl Client {
         let input_read = BufReader::new(input_read);
 
         // send connect packet
-        let mut bytes = BytesMut::new();
-        addr.to_bytes(&cmd, &mut bytes);
-        output_write.send(Message::binary(bytes.to_vec())).await?;
+        output_write.send(Packet::Connect(addr).try_into()?).await?;
         info!("send connect packet successfully");
 
         let (_, _) = tokio::join!(

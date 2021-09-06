@@ -7,14 +7,14 @@ edition = "2018"
 
 [dependencies]
 tokio = { version = "1.10", features = ["full"] }
-futures = "0"
 tokio-socks = "0.5.1"
+tokio-tungstenite = { version = "*", features = ["rustls-tls"] }
+futures = "0"
 thiserror = "1"
 structopt = { version = "0.3", default-features = false }
-tokio-tungstenite = { version = "*", features = ["rustls-tls"] }
+tokio-util = { version = "*", features = ["codec"] }
 futures-util = { version = "0.3", default-features = false, features = ["async-await", "sink", "std"] }
 futures-channel = "0.3"
-tungstenite = { version = "*", default-features = false }
 url = "2"
 bytes = "1.0.1"
 rustls-pemfile = "*"
@@ -23,6 +23,7 @@ rustls = "*"
 log = "0.4.0"
 env_logger = "*"
 http = "*"
+byteorder = "1"
 
 [[bin]]
 name = "ss"

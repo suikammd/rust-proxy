@@ -27,4 +27,9 @@ then
       parameter="$parameter --private_key $PRIVATE_KEY"
 fi
 
+if [ ! -z "$AUTHORIZATION" ]
+then
+      parameter="$parameter --private_key $AUTHORIZATION"
+fi
+
 ss $parameter

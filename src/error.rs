@@ -19,6 +19,10 @@ pub enum ProxyError {
     #[error("invalid rep code")]
     InvalidRepCode,
     // end
+    #[error("invalid packet type")]
+    InvalidPacketType,
+    #[error("packet is not binary message")]
+    PacketNotBinaryMessage,
     #[error("build client http request error")]
     HttpError(#[from] http::Error),
     #[error("empty params")]
