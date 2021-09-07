@@ -1,11 +1,26 @@
-use std::{convert::{TryFrom, TryInto}, io::Cursor, net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6, ToSocketAddrs}};
+use std::{
+    convert::{TryFrom, TryInto},
+    io::Cursor,
+    net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6, ToSocketAddrs},
+};
 
-use byteorder::{LittleEndian};
+use byteorder::LittleEndian;
 use bytes::{BufMut, BytesMut};
 use log::info;
-use tokio::{io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufWriter}, net::TcpStream};
+use tokio::{
+    io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufWriter},
+    net::TcpStream,
+};
 
 use crate::error::{ProxyError, ProxyResult};
+
+const COMMAND_CONNECT: u8 = 1;
+const COMMAND_BIND: u8 = 2;
+const COMMAND_UDP: u8 = 3;
+
+pub const ADDR_IPV4: u8 = 1;
+pub const ADDR_DOMAIN: u8 = 3;
+pub const ADDR_IPV6: u8 = 4;
 
 pub enum MethodType {
     NoAuth,
@@ -30,13 +45,21 @@ pub enum Command {
     Udp,
 }
 
-impl TryFrom<u8> for Command {
-    type Error = ProxyError;
-    fn try_from(value: u8) -> ProxyResult<Self> {
-        match value {
-            1 => Ok(Command::Connect),
-            2 => Ok(Command::Bind),
-            3 => Ok(Command::Udp),
+impl Command {
+    pub async fn decode<T>(mut stream: T) -> ProxyResult<Self>
+    where
+        T: AsyncRead + Unpin,
+    {
+        let mut header = [0u8; 3];
+        stream.read_exact(&mut header).await?;
+        if header[0] != 0x05 {
+            return Err(ProxyError::UnsupportedSocksType(header[0]));
+        }
+
+        match header[1] {
+            COMMAND_CONNECT => Ok(Command::Connect),
+            COMMAND_BIND => Ok(Command::Bind),
+            COMMAND_UDP => Ok(Command::Udp),
             _ => Err(ProxyError::UnsupportedCommand),
         }
     }
@@ -46,9 +69,9 @@ impl TryFrom<Command> for u8 {
     type Error = ProxyError;
     fn try_from(command: Command) -> ProxyResult<u8> {
         match command {
-            Command::Connect => Ok(1),
-            Command::Bind => Ok(2),
-            Command::Udp => Ok(3),
+            Command::Connect => Ok(COMMAND_CONNECT),
+            Command::Bind => Ok(COMMAND_BIND),
+            Command::Udp => Ok(COMMAND_UDP),
         }
     }
 }
@@ -199,17 +222,17 @@ impl Addr {
     pub fn to_bytes(&self, bytes: &mut BytesMut) {
         match self {
             Addr::IpV4(addr) => {
-                bytes.put_u8(1);
+                bytes.put_u8(ADDR_IPV4);
                 bytes.put_u16(addr.1);
                 bytes.put_slice(&addr.0[..]);
             }
             Addr::Domain(addr) => {
-                bytes.put_u8(3);
+                bytes.put_u8(ADDR_DOMAIN);
                 bytes.put_u16(addr.1);
                 bytes.put(addr.0.as_bytes());
             }
             Addr::IpV6(addr) => {
-                bytes.put_u8(4);
+                bytes.put_u8(ADDR_IPV6);
                 bytes.put_u16(addr.1);
                 bytes.put_slice(&addr.0[..]);
             }
@@ -253,15 +276,5 @@ impl Addr {
         }
         info!("addr is {:?}", addr);
         Ok(addr)
-    }
-
-    pub async fn parse_addrs(stream: &mut TcpStream) -> Result<Vec<SocketAddr>, ProxyError> {
-        let command = Command::try_from(stream.read_u8().await?)?;
-        if command != Command::Connect {
-            return Err(ProxyError::UnsupportedCommand);
-        }
-
-        let addr = Addr::decode(stream).await?;
-        addr.try_into()
     }
 }

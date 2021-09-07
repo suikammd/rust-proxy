@@ -32,7 +32,6 @@ where
         unsafe {
             buffer.set_len(len);
         }
-        log::info!("len: {}, buffer len: {}, buffer data: {:?}", len, buffer.len(), buffer);
         websocket_sink.send(Packet::Data(buffer).try_into()?).await?;
     }
 }

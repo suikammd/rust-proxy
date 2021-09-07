@@ -115,32 +115,13 @@ impl Client {
 
         input_write.write_all(&[0x05, 0x00]).await?;
         input_write.flush().await?;
-        let (cmd, addr) = Client::get_cmd_addr(input_read).await?;
+        let cmd = Command::decode(&mut input_read).await?;
+        let addr = Addr::decode(&mut input_read).await?;
         input_write.write_u8(0x05).await?;
         input_write.write_u8(RepCode::Success.into()).await?;
         input_write.write_u8(0x00).await?;
         addr.encode(input_write).await?;
 
-        Ok((cmd, addr))
-    }
-
-    async fn get_cmd_addr<T>(mut stream: T) -> ProxyResult<(Command, Addr)>
-    where
-        T: AsyncRead + Unpin,
-    {
-        let mut header = [0u8; 3];
-        stream.read_exact(&mut header).await?;
-        if header[0] != 0x05 {
-            return Err(ProxyError::UnsupportedSocksType(header[0]));
-        }
-
-        let cmd = Command::try_from(header[1])?;
-        if cmd != Command::Connect {
-            return Err(ProxyError::UnsupportedCommand);
-        }
-
-        let addr = Addr::decode(stream).await?;
-        info!("addr {:?}", addr);
         Ok((cmd, addr))
     }
 }
