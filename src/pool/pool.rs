@@ -1,12 +1,7 @@
-use std::{
-    collections::VecDeque,
-    future::Future,
-    ops::{Deref, DerefMut},
-    sync::{Arc, Mutex, Weak},
-};
+use std::{collections::VecDeque, future::Future, ops::{Deref, DerefMut}, sync::{Arc, Mutex, Weak}};
 
 use futures_util::future;
-use tokio::sync::oneshot;
+use tokio::sync::{oneshot};
 use tower::{Service, ServiceExt};
 
 use super::started;
@@ -15,10 +10,15 @@ use crate::pool::started::Started;
 pub(crate) enum Never {}
 
 /// Connection Pool for reuse connections
-#[derive(Clone)]
 pub struct Pool<T> {
     // share between threads
     inner: Arc<Mutex<Inner<T>>>,
+}
+
+impl<T> Clone for Pool<T> {
+    fn clone(&self) -> Self {
+        Self { inner: self.inner.clone() }
+    }
 }
 
 pub struct Pooled<T> {
@@ -131,18 +131,21 @@ where
         MT::Error: Into<anyhow::Error>,
         MT::Future: Unpin + Send + 'static,
     {
-        let mut inner = self.inner.lock().unwrap();
-        if let Some(idle) = inner.idle.pop() {
-            return Ok(Pooled {
-                inner: Some(idle),
-                pool: Arc::downgrade(&self.inner),
-            });
-        }
+        let rx = {
+            let mut inner = self.inner.lock().unwrap();
+            if let Some(idle) = inner.idle.pop() {
+                return Ok(Pooled {
+                    inner: Some(idle),
+                    pool: Arc::downgrade(&self.inner),
+                });
+            }
 
-        let (tx, rx) = oneshot::channel();
-        inner.waiters.push_back(tx);
-        // try create
-        drop(inner);
+            let (tx, rx) = oneshot::channel();
+            inner.waiters.push_back(tx);
+            // try create
+            drop(inner);
+            rx
+        };
 
         let lazy_fut = { || mt.oneshot(()) };
         match future::select(rx, started::lazy(lazy_fut)).await {
