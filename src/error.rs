@@ -1,5 +1,5 @@
-use std::io;
 use rustls::TLSError;
+use std::io;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -27,10 +27,14 @@ pub enum ProxyError {
     HttpError(#[from] http::Error),
     #[error("empty params")]
     EmptyParams,
+    // cert start
     #[error("invalid private key")]
     InvalidPrivateKey,
     #[error("invalid cert")]
     InvalidCert,
+    // end
+    #[error("invalid server status, (expected {expected:?}, found {found:?})")]
+    InvalidServerStatus { expected: String, found: String },
     #[error("data store disconnected `{0}`")]
     Disconnect(#[from] io::Error),
     #[error("tls error")]

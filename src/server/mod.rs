@@ -1,7 +1,7 @@
 use std::{convert::TryInto, net::SocketAddr, path::PathBuf, sync::Arc};
 
 use crate::{
-    codec::{Packet},
+    codec::Packet,
     error::{ProxyError, ProxyResult},
     util::{
         copy::{server_read_from_tcp_to_websocket, server_read_from_websocket_to_tcp},
@@ -99,33 +99,35 @@ async fn serve(
     .await?;
     info!("build websocket stream successfully");
     // get connect addrs from connect packet
-    let (input_write, mut input_read) = ws_stream.split();
-    let addrs: Vec<SocketAddr> = match input_read.try_next().await {
-        Ok(Some(msg)) => {
-            if let Ok(Packet::Connect(addr)) = Packet::to_packet(msg) {
-                addr.try_into()?
-            } else {
+    let (mut input_write, mut input_read) = ws_stream.split();
+    loop {
+        let addrs: Vec<SocketAddr> = match input_read.try_next().await {
+            Ok(Some(msg)) => match Packet::to_packet(msg) {
+                Ok(Packet::Connect(addr)) => addr.try_into()?,
+                Ok(_) => return Ok(()),
+                Err(_) => return Ok(()),
+            },
+            Ok(None) => {
                 return Ok(());
             }
-        }
-        Ok(None) => {
-            return Ok(());
-        }
-        Err(e) => {
-            // TODO
-            error!("{:?}", e);
-            return Ok(());
-        }
-    };
+            Err(e) => {
+                // TODO
+                error!("{:?}", e);
+                return Ok(());
+            }
+        };
+        let mut target = TcpStream::connect(&addrs[..]).await?;
+        info!("connect to proxy addrs successfully");
+        let (output_read, output_write) = target.split();
+        let output_read = BufReader::new(output_read);
 
-    let mut target = TcpStream::connect(&addrs[..]).await?;
-    info!("connect to proxy addrs successfully");
-    let (output_read, output_write) = target.split();
-    let output_read = BufReader::new(output_read);
-
-    let (_, _) = tokio::join!(
-        server_read_from_tcp_to_websocket(output_read, input_write),
-        server_read_from_websocket_to_tcp(output_write, input_read)
-    );
-    Ok(())
+        tokio::select!(
+            _ = server_read_from_tcp_to_websocket(output_read, &mut input_write) => {
+                info!("server read from tcp to websocket finished");
+            }
+            _ = server_read_from_websocket_to_tcp(output_write, &mut input_read) => {
+                info!("server read from websocket to tcp finished");
+            }
+        );
+    }
 }

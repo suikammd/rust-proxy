@@ -4,7 +4,6 @@ use crate::{codec::{ADDR_IPV4, ADDR_IPV6, socks5::ADDR_DOMAIN}, error::{ProxyErr
 
 use super::Addr;
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
-use log::info;
 use tokio_tungstenite::tungstenite::Message;
 
 pub enum Packet {

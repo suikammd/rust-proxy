@@ -1,5 +1,5 @@
 use std::{
-    convert::{TryFrom, TryInto},
+    convert::{TryFrom},
     io::Cursor,
     net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6, ToSocketAddrs},
 };
@@ -9,7 +9,6 @@ use bytes::{BufMut, BytesMut};
 use log::info;
 use tokio::{
     io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufWriter},
-    net::TcpStream,
 };
 
 use crate::error::{ProxyError, ProxyResult};

@@ -6,14 +6,17 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-tokio = { version = "1.10", features = ["full"] }
+tokio = { version = "*", features = ["full"] }
 tokio-socks = "0.5.1"
 tokio-tungstenite = { version = "*", features = ["rustls-tls"] }
+
 futures = "0"
 thiserror = "1"
 structopt = { version = "0.3", default-features = false }
 tokio-util = { version = "*", features = ["codec"] }
-futures-util = { version = "0.3", default-features = false, features = ["async-await", "sink", "std"] }
+futures-core = "*"
+futures-sink = "0.3.15"
+futures-util = "*"
 futures-channel = "0.3"
 url = "2"
 bytes = "1.0.1"
@@ -23,7 +26,10 @@ rustls = "*"
 log = "0.4.0"
 env_logger = "*"
 http = "*"
+anyhow = "*"
+tower = { version = "*", features = ["full"] }
 byteorder = "1"
+pin-project = "*"
 
 [[bin]]
 name = "ss"
