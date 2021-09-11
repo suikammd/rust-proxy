@@ -85,14 +85,6 @@ impl<T> Drop for Pooled<T> {
     }
 }
 
-pub trait ElemBuilder {
-    type Item: Elem;
-    type Future: Future<Output = Self::Item>;
-    fn build(&self) -> Self::Future;
-}
-
-pub trait Elem {}
-
 pub struct Inner<T> {
     idle: Vec<T>,
     waiters: VecDeque<oneshot::Sender<T>>,
