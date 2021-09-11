@@ -5,14 +5,19 @@ goal:
 
 feat:
 1. based on websocket
-
-server:
-1. get socks5 connections from browser
-2. do handshake, choose which method to use (only support no auth for now)
-3. retrieve which addr browser wants to go, and convert to a custom request to client(no matter success or not, says ok to browser).
-4. convert tcp stream to websocket stream and combine this stream to proxy stream
+2. pooled websocket connection
 
 client:
-1. get and parse custom request from websocket stream
-2. connect to addr in custom request and get a new stream
-3. combine proxy stream with transformed new stream (websocket based)
+1. get socks5 connections from browser
+2. do handshake, choose which method to use (only support no auth for now)
+3. retrieve which addr browser wants to go, build a tls websocket with server, then send a addr packet to server
+4. combine socks5 stream to websocket stream, websocket message is a data packet
+5. after finish reading from sock5 stream, client will send a close packet to server
+
+server:
+1. parse addr packet and connect to addr
+2. combine proxy stream with websocket stream
+3. loop above steps until server dies
+
+## Credit
+- [@dyxushuai](https://github.com/dyxushuai): pool implementation
