@@ -104,16 +104,14 @@ async fn serve(
         let addrs: Vec<SocketAddr> = match input_read.try_next().await {
             Ok(Some(msg)) => match Packet::to_packet(msg) {
                 Ok(Packet::Connect(addr)) => addr.try_into()?,
-                Ok(_) => return Ok(()),
-                Err(_) => return Ok(()),
+                Ok(_) => return Err(ProxyError::InvalidPacketType),
+                Err(e) => return Err(ProxyError::Unknown(format!("{:?}", e))),
             },
             Ok(None) => {
-                return Ok(());
+                return Err(ProxyError::Unknown("get none packet".into()));
             }
             Err(e) => {
-                // TODO
-                error!("{:?}", e);
-                return Ok(());
+                return Err(ProxyError::Unknown(format!("{:?}", e)))
             }
         };
         let mut target = TcpStream::connect(&addrs[..]).await?;

@@ -1,24 +1,20 @@
 use std::sync::Arc;
-use std::task::Poll;
-use std::{convert::TryInto, pin::Pin};
 
-use futures::{FutureExt, SinkExt, StreamExt};
-use http::{Request, Response};
+use futures::FutureExt;
+
 use log::{error, info};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt, BufReader, BufWriter},
     net::{TcpListener, TcpStream},
 };
-use tokio_tungstenite::{connect_async, MaybeTlsStream, WebSocketStream};
-use tower::Service;
 
+use crate::pool::make_connection::{MakeWebsocketStreamConnection, WebSocketStreamConnection};
 use crate::pool::Pool;
 use crate::{
     codec::{
-        Addr, Packet, {Command, RepCode},
+        Addr, {Command, RepCode},
     },
     error::{ProxyError, ProxyResult},
-    util::copy::{client_read_from_tcp_to_websocket, client_read_from_websocket_to_tcp},
 };
 
 pub struct Client {
@@ -46,7 +42,7 @@ impl Client {
 
     pub async fn run(&self) -> Result<(), Box<dyn std::error::Error>> {
         let listener = TcpListener::bind(self.listen_addr.clone()).await?;
-        let pool: Pool<MakeWebsocketStreamResponse> = Pool::new(10);
+        let pool: Pool<WebSocketStreamConnection> = Pool::new(10);
         while let Ok((inbound, _)) = listener.accept().await {
             let serve = Client::serve(inbound, self.mt.clone(), pool.clone()).map(|r| {
                 if let Err(e) = r {
@@ -61,7 +57,7 @@ impl Client {
     async fn serve(
         mut inbound: TcpStream,
         mt: MakeWebsocketStreamConnection,
-        pool: Pool<MakeWebsocketStreamResponse>,
+        pool: Pool<WebSocketStreamConnection>,
     ) -> ProxyResult<()> {
         info!("Get new connections");
 
@@ -74,22 +70,7 @@ impl Client {
         info!("WebSocket handshake has been successfully completed");
 
         let (input_read, input_write) = inbound.split();
-        let (ws_stream, http_response) = stream.inner.take().unwrap();
-        let (mut output_write, output_read) = ws_stream.split();
-        let input_read = BufReader::new(input_read);
-
-        // send connect packet
-        output_write.send(Packet::Connect(addr).try_into()?).await?;
-        info!("send connect packet successfully");
-
-        let (output_write, output_read) = tokio::join!(
-            client_read_from_tcp_to_websocket(input_read, output_write),
-            client_read_from_websocket_to_tcp(input_write, output_read)
-        );
-        stream
-            .inner
-            .insert((output_read?.reunite(output_write?).unwrap(), http_response));
-
+        stream.copy(input_read, input_write, addr).await?;
         Ok(())
     }
 
@@ -126,37 +107,5 @@ impl Client {
         addr.encode(input_write).await?;
 
         Ok((cmd, addr))
-    }
-}
-
-type MakeWebsocketStreamResponse = (WebSocketStream<MaybeTlsStream<TcpStream>>, Response<()>);
-#[derive(Debug, Clone)]
-struct MakeWebsocketStreamConnection {
-    server_url: Arc<String>,
-    authorization: Arc<String>,
-}
-
-impl<T> Service<T> for MakeWebsocketStreamConnection {
-    type Response = MakeWebsocketStreamResponse;
-
-    type Error = tokio_tungstenite::tungstenite::Error;
-
-    type Future =
-        Pin<Box<dyn std::future::Future<Output = Result<Self::Response, Self::Error>> + Send>>;
-
-    fn poll_ready(
-        &mut self,
-        cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<Result<(), Self::Error>> {
-        Poll::Ready(Ok(()))
-    }
-
-    fn call(&mut self, _: T) -> Self::Future {
-        let req = Request::builder()
-            .uri(self.server_url.as_ref())
-            .header("Authorization", self.authorization.as_ref())
-            .body(())
-            .unwrap();
-        Box::pin(connect_async(req))
     }
 }
