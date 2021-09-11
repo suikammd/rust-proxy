@@ -104,11 +104,15 @@ async fn serve(
         let addrs: Vec<SocketAddr> = match input_read.try_next().await {
             Ok(Some(msg)) => match Packet::to_packet(msg) {
                 Ok(Packet::Connect(addr)) => addr.try_into()?,
-                Ok(_) => return Err(ProxyError::InvalidPacketType),
+                Ok(_) => {
+                    info!("packet is not binary message");
+                    continue
+                },
                 Err(e) => return Err(ProxyError::Unknown(format!("{:?}", e))),
             },
             Ok(None) => {
-                return Err(ProxyError::Unknown("get none packet".into()));
+                info!("get none packet");
+                continue
             }
             Err(e) => {
                 return Err(ProxyError::Unknown(format!("{:?}", e)))
