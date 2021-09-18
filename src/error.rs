@@ -1,4 +1,3 @@
-use futures::stream::ReuniteError;
 use rustls::TLSError;
 use std::io;
 use thiserror::Error;

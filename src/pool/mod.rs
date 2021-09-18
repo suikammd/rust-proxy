@@ -2,12 +2,7 @@
 pub mod make_connection;
 mod started;
 
-use std::{
-    collections::VecDeque,
-    future::Future,
-    ops::{Deref, DerefMut},
-    sync::{Arc, Mutex, Weak},
-};
+use std::{collections::VecDeque, future::Future, ops::{Deref, DerefMut}, sync::{Arc, Mutex, Weak}, task::Context};
 
 use futures_util::future;
 use log::info;
@@ -15,6 +10,13 @@ use tokio::sync::oneshot;
 use tower::{Service, ServiceExt};
 
 use crate::pool::started::Started;
+
+pub trait Poolable {
+    type Output;
+    type Future: Future<Output = Option<Self::Output>>;
+    // check if the connection is opened
+    fn checked(self) -> Self::Future;
+}
 
 /// Connection Pool for reuse connections
 pub struct Pool<T> {
@@ -140,6 +142,7 @@ where
         let rx = {
             let mut inner = self.inner.lock().unwrap();
             if let Some(idle) = inner.idle.pop() {
+                info!("get connection from idle pool");
                 return Ok(Pooled {
                     inner: Some(idle),
                     pool: Arc::downgrade(&self.inner),
