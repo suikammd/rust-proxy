@@ -4,20 +4,19 @@ use crate::{
     codec::Packet,
     error::{ProxyError, ProxyResult},
     util::{
-        copy::{server_read_from_tcp_to_websocket, server_read_from_websocket_to_tcp},
         ssl::{load_certs, load_private_key},
+        websocket_connection::WebSocketConnection,
     },
 };
-use futures::{FutureExt, StreamExt, TryStreamExt};
+use futures::{FutureExt, SinkExt, StreamExt};
 
 use log::{error, info};
 use rustls::NoClientAuth;
 use tokio::{
-    io::BufReader,
+    io::{copy_bidirectional, AsyncWriteExt},
     net::{TcpListener, TcpStream},
 };
 use tokio_rustls::TlsAcceptor;
-
 pub struct Server {
     listen_addr: String,
     acceptor: TlsAcceptor,
@@ -99,37 +98,36 @@ async fn serve(
     .await?;
     info!("build websocket stream successfully");
     // get connect addrs from connect packet
-    let (mut input_write, mut input_read) = ws_stream.split();
+    // let (mut input_write, mut input_read) = ws_stream.split();
+    let mut ws_stream = WebSocketConnection(ws_stream);
     loop {
-        let addrs: Vec<SocketAddr> = match input_read.try_next().await {
-            Ok(Some(msg)) => match Packet::to_packet(msg) {
-                Ok(Packet::Connect(addr)) => addr.try_into()?,
-                Ok(_) => {
-                    info!("packet is not binary message");
-                    continue
-                },
-                Err(e) => return Err(ProxyError::Unknown(format!("{:?}", e))),
-            },
-            Ok(None) => {
-                info!("get none packet");
-                continue
+        let addrs: Vec<SocketAddr> = match ws_stream.0.next().await {
+            Some(msg) => {
+                info!("get msg : {:?}", msg);
+                match msg {
+                    Ok(msg) => match Packet::to_packet(msg) {
+                        Ok(Packet::Connect(addr)) => addr.try_into()?,
+                        Ok(msg) => {
+                            info!("packet is not binary message {:?}", msg);
+                            continue;
+                        }
+                        Err(e) => return Err(ProxyError::Unknown(format!("{:?}", e))),
+                    },
+                    Err(_) => {
+                        info!("get msg failed");
+                        return Ok(());
+                    }
+                }
             }
-            Err(e) => {
-                return Err(ProxyError::Unknown(format!("{:?}", e)))
+            None => {
+                info!("get none packet");
+                return Ok(());
             }
         };
-        let mut target = TcpStream::connect(&addrs[..]).await?;
+        let mut outbound = TcpStream::connect(&addrs[..]).await?;
         info!("connect to proxy addrs successfully");
-        let (output_read, output_write) = target.split();
-        let output_read = BufReader::new(output_read);
-
-        tokio::select!(
-            _ = server_read_from_tcp_to_websocket(output_read, &mut input_write) => {
-                info!("server read from tcp to websocket finished");
-            }
-            _ = server_read_from_websocket_to_tcp(output_write, &mut input_read) => {
-                info!("server read from websocket to tcp finished");
-            }
-        );
+        let _ = copy_bidirectional(&mut ws_stream, &mut outbound).await;
+        info!("server: finish copy.....");
+        ws_stream.0.send(Packet::Close().try_into()?).await?;
     }
 }

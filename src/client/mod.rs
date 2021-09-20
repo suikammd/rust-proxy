@@ -1,15 +1,21 @@
-use std::sync::Arc;
+use std::{convert::TryInto, pin::Pin, sync::Arc};
 
-use futures::FutureExt;
+use futures::{future::poll_fn, FutureExt};
 
+use futures::SinkExt;
 use log::{error, info};
 use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt, BufReader, BufWriter},
+    io::{copy_bidirectional, AsyncReadExt, AsyncWriteExt, BufReader, BufWriter},
     net::{TcpListener, TcpStream},
 };
+use tokio_tungstenite::{tungstenite::Message, MaybeTlsStream};
 
-use crate::pool::make_connection::{MakeWebsocketStreamConnection, WebSocketStreamConnection};
 use crate::pool::Pool;
+use crate::util::websocket_connection::WebSocketConnection;
+use crate::{
+    codec::Packet,
+    pool::make_connection::{MakeWebsocketStreamConnection, WebSocketOutboundConnection},
+};
 use crate::{
     codec::{
         Addr, {Command, RepCode},
@@ -42,7 +48,7 @@ impl Client {
 
     pub async fn run(&self) -> Result<(), Box<dyn std::error::Error>> {
         let listener = TcpListener::bind(self.listen_addr.clone()).await?;
-        let pool: Pool<WebSocketStreamConnection> = Pool::new(10);
+        let pool: Pool<WebSocketOutboundConnection> = Pool::new(10);
         while let Ok((inbound, _)) = listener.accept().await {
             let serve = Client::serve(inbound, self.mt.clone(), pool.clone()).map(|r| {
                 if let Err(e) = r {
@@ -57,7 +63,7 @@ impl Client {
     async fn serve(
         mut inbound: TcpStream,
         mt: MakeWebsocketStreamConnection,
-        pool: Pool<WebSocketStreamConnection>,
+        pool: Pool<WebSocketOutboundConnection>,
     ) -> ProxyResult<()> {
         info!("Get new connections");
 
@@ -69,8 +75,15 @@ impl Client {
         let mut stream = pool.get(mt).await.unwrap();
         info!("WebSocket handshake has been successfully completed");
 
-        let (input_read, input_write) = inbound.split();
-        stream.copy(input_read, input_write, addr).await?;
+        // let (input_read, input_write) = inbound.split();
+        let outbound = stream.inner.take().unwrap();
+        let mut outbound = WebSocketConnection(outbound.0);
+        let addr_msg: Message = Packet::Connect(addr).try_into()?;
+        outbound.0.send(addr_msg).await?;
+        info!("send connect packet successfully");
+        let (a_to_b, b_to_a) = copy_bidirectional(&mut outbound, &mut inbound).await?;
+        info!("finished copy data a_to_b {} b_to_a {}", a_to_b, b_to_a);
+        let _ = stream.inner.insert(WebSocketOutboundConnection(outbound.0));
         Ok(())
     }
 
