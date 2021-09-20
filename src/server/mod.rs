@@ -76,27 +76,27 @@ async fn serve(
 ) -> ProxyResult<()> {
     info!("get new connections");
     // convert to tls stream
-    let inbound = acceptor.accept(inbound).await?;
+    // let inbound = acceptor.accept(inbound).await?;
     // convert to websocket stream
-    // let ws_stream = tokio_tungstenite::accept_async(inbound).await?;
-    let ws_stream = tokio_tungstenite::accept_hdr_async(
-        inbound,
-        |req: &http::Request<()>,
-         res: http::Response<()>|
-         -> Result<http::Response<()>, http::Response<Option<String>>> {
-            if req.headers().get("Authorization").map(|x| x.as_bytes())
-                != Some(authorization.as_bytes())
-            {
-                info!("incorrect auth");
-                return Err(http::Response::new(Some(
-                    "invalid authorization".to_string(),
-                )));
-            }
-            info!("correct auth");
-            Ok(res)
-        },
-    )
-    .await?;
+    let ws_stream = tokio_tungstenite::accept_async(inbound).await?;
+    // let ws_stream = tokio_tungstenite::accept_hdr_async(
+    //     inbound,
+    //     |req: &http::Request<()>,
+    //      res: http::Response<()>|
+    //      -> Result<http::Response<()>, http::Response<Option<String>>> {
+    //         if req.headers().get("Authorization").map(|x| x.as_bytes())
+    //             != Some(authorization.as_bytes())
+    //         {
+    //             info!("incorrect auth");
+    //             return Err(http::Response::new(Some(
+    //                 "invalid authorization".to_string(),
+    //             )));
+    //         }
+    //         info!("correct auth");
+    //         Ok(res)
+    //     },
+    // )
+    // .await?;
     info!("build websocket stream successfully");
     // get connect addrs from connect packet
     let (mut input_write, mut input_read) = ws_stream.split();

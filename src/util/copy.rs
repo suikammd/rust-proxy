@@ -84,7 +84,8 @@ where
 
 pub async fn server_read_from_tcp_to_websocket<T>(
     mut tcp_stream: T,
-    websocket_sink: &mut SplitSink<WebSocketStream<TlsStream<TcpStream>>, Message>,
+    // websocket_sink: &mut SplitSink<WebSocketStream<TlsStream<TcpStream>>, Message>,
+    websocket_sink: &mut SplitSink<WebSocketStream<TcpStream>, Message>,
 ) -> ProxyResult<()>
 where
     T: AsyncRead + Unpin,
@@ -119,7 +120,8 @@ where
 
 pub async fn server_read_from_websocket_to_tcp<T>(
     mut tcp_stream: T,
-    websocket_stream: &mut SplitStream<WebSocketStream<TlsStream<TcpStream>>>,
+    // websocket_stream: &mut SplitStream<WebSocketStream<TlsStream<TcpStream>>>,
+    websocket_stream: &mut SplitStream<WebSocketStream<TcpStream>>,
 ) -> ProxyResult<()>
 where
     T: AsyncWrite + Unpin,

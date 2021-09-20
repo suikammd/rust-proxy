@@ -34,7 +34,7 @@ impl Client {
         Ok(Self {
             listen_addr,
             mt: MakeWebsocketStreamConnection {
-                server_url: Arc::new(format!("wss://{}", proxy_addr)),
+                server_url: Arc::new(format!("ws://{}", proxy_addr)),
                 authorization: Arc::new(authorization),
             },
         })
