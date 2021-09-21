@@ -94,7 +94,7 @@ async fn serve(
     //         }
     //         info!("correct auth");
     //         Ok(res)
-    //     },
+    //    E },
     // )
     // .await?;
     info!("build websocket stream successfully");
@@ -104,8 +104,8 @@ async fn serve(
         let addrs: Vec<SocketAddr> = match input_read.try_next().await {
             Ok(Some(msg)) => match Packet::to_packet(msg) {
                 Ok(Packet::Connect(addr)) => addr.try_into()?,
-                Ok(_) => {
-                    info!("packet is not binary message");
+                Ok(msg) => {
+                    info!("packet is not binary message {:?}", msg);
                     continue
                 },
                 Err(e) => return Err(ProxyError::Unknown(format!("{:?}", e))),
@@ -121,15 +121,21 @@ async fn serve(
         let mut target = TcpStream::connect(&addrs[..]).await?;
         info!("connect to proxy addrs successfully");
         let (output_read, output_write) = target.split();
-        let output_read = BufReader::new(output_read);
+        // let output_read = BufReader::new(output_read);
 
-        tokio::select!(
-            _ = server_read_from_tcp_to_websocket(output_read, &mut input_write) => {
-                info!("server read from tcp to websocket finished");
-            }
-            _ = server_read_from_websocket_to_tcp(output_write, &mut input_read) => {
-                info!("server read from websocket to tcp finished");
-            }
+        let (a, b) = tokio::join!(
+            server_read_from_tcp_to_websocket(output_read, &mut input_write),
+            server_read_from_websocket_to_tcp(output_write, &mut input_read)
         );
+        println!("test: {:?}, {:?}", a, b);
+
+        // tokio::select!(
+        //     _ = server_read_from_tcp_to_websocket(output_read, &mut input_write) => {
+        //         info!("server read from tcp to websocket finished");
+        //     }
+        //     _ = server_read_from_websocket_to_tcp(output_write, &mut input_read) => {
+        //         info!("server read from websocket to tcp finished");
+        //     }
+        // );
     }
 }

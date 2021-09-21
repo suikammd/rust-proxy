@@ -101,6 +101,7 @@ where
             buffer.set_len(len);
         }
         websocket_sink.send(Message::binary(buffer)).await?;
+        println!("STW: write to websocket successfully, total len is {}", len);
     }
 }
 
@@ -137,5 +138,6 @@ where
             Packet::Close() => return Ok(()),
         }
     }
+    println!("Test server_read_from_websocket_to_tcp done");
     Ok(())
 }

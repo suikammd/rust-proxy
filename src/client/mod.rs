@@ -1,14 +1,13 @@
-use std::sync::Arc;
+use std::{convert::TryInto, pin::Pin, sync::Arc};
 
-use futures::FutureExt;
+use futures::{FutureExt, future::poll_fn};
 
 use log::{error, info};
-use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt, BufReader, BufWriter},
-    net::{TcpListener, TcpStream},
-};
+use tokio::{io::{AsyncReadExt, AsyncWriteExt, BufReader, BufWriter, copy_bidirectional}, net::{TcpListener, TcpStream}};
+use tokio_tungstenite::tungstenite::Message;
+use futures::SinkExt;
 
-use crate::pool::make_connection::{MakeWebsocketStreamConnection, WebSocketStreamConnection};
+use crate::{codec::Packet, pool::make_connection::{MakeWebsocketStreamConnection, WebSocketStreamConnection}};
 use crate::pool::Pool;
 use crate::{
     codec::{
@@ -69,8 +68,22 @@ impl Client {
         let mut stream = pool.get(mt).await.unwrap();
         info!("WebSocket handshake has been successfully completed");
 
-        let (input_read, input_write) = inbound.split();
-        stream.copy(input_read, input_write, addr).await?;
+        // let (input_read, input_write) = inbound.split();
+        let mut outbound = stream.inner.take().unwrap();
+        let addr_msg: Message = Packet::Connect(addr).try_into()?;
+        outbound.0.send(addr_msg).await?;
+        info!("send connect packet successfully");
+        match copy_bidirectional(&mut inbound, &mut outbound).await {
+            Ok((a, b)) => {
+                info!("copy a {} b {}", a, b);
+            },
+            Err(e) => {
+                info!("error {:?}", e);
+            },
+        }
+        info!("finished copy");
+        stream.inner.insert(outbound);
+        // stream.copy(input_read, input_write, addr).await?;
         Ok(())
     }
 

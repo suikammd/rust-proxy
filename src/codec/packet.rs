@@ -6,6 +6,7 @@ use super::Addr;
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use tokio_tungstenite::tungstenite::Message;
 
+#[derive(Debug)]
 pub enum Packet {
     Connect(Addr),
     Data(Vec<u8>),
