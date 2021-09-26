@@ -11,7 +11,7 @@ use tokio::{
 use tokio_tungstenite::{tungstenite::Message};
 
 use crate::pool::Pool;
-use crate::util::websocket_connection::WebSocketConnection;
+use crate::transport::WebSocketConnection;
 use crate::{
     codec::Packet,
     pool::make_connection::{MakeWebsocketStreamConnection, WebSocketOutboundConnection},
