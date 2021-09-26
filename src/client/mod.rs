@@ -1,6 +1,6 @@
-use std::{convert::TryInto, pin::Pin, sync::Arc};
+use std::{convert::TryInto, sync::Arc};
 
-use futures::{future::poll_fn, FutureExt};
+use futures::{FutureExt};
 
 use futures::SinkExt;
 use log::{error, info};
@@ -8,7 +8,7 @@ use tokio::{
     io::{copy_bidirectional, AsyncReadExt, AsyncWriteExt, BufReader, BufWriter},
     net::{TcpListener, TcpStream},
 };
-use tokio_tungstenite::{tungstenite::Message, MaybeTlsStream};
+use tokio_tungstenite::{tungstenite::Message};
 
 use crate::pool::Pool;
 use crate::util::websocket_connection::WebSocketConnection;
@@ -72,10 +72,9 @@ impl Client {
         info!("cmd {:?} addr {:?}", cmd, addr);
         info!("handshake successfully");
 
-        let mut stream = pool.get(mt).await.unwrap();
+        let mut stream = pool.get(mt).await?;
         info!("WebSocket handshake has been successfully completed");
 
-        // let (input_read, input_write) = inbound.split();
         let outbound = stream.inner.take().unwrap();
         let mut outbound = WebSocketConnection(outbound.0);
         let addr_msg: Message = Packet::Connect(addr).try_into()?;

@@ -8,12 +8,13 @@ use crate::{
         websocket_connection::WebSocketConnection,
     },
 };
-use futures::{FutureExt, SinkExt, StreamExt};
+use futures::{FutureExt, StreamExt};
 
 use log::{error, info};
 use rustls::NoClientAuth;
+
 use tokio::{
-    io::{copy_bidirectional, AsyncWriteExt},
+    io::copy_bidirectional,
     net::{TcpListener, TcpStream},
 };
 use tokio_rustls::TlsAcceptor;
@@ -128,6 +129,5 @@ async fn serve(
         info!("connect to proxy addrs successfully");
         let _ = copy_bidirectional(&mut ws_stream, &mut outbound).await;
         info!("server: finish copy.....");
-        ws_stream.0.send(Packet::Close().try_into()?).await?;
     }
 }

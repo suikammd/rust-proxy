@@ -4,7 +4,6 @@ mod started;
 
 use std::{
     collections::VecDeque,
-    future::Future,
     ops::{Deref, DerefMut},
     sync::{Arc, Mutex, Weak},
 };
@@ -140,6 +139,7 @@ where
         let rx = {
             let mut inner = self.inner.lock().unwrap();
             if let Some(idle) = inner.idle.pop() {
+                info!("get connection from poll");
                 return Ok(Pooled {
                     inner: Some(idle),
                     pool: Arc::downgrade(&self.inner),
@@ -156,6 +156,7 @@ where
         let lazy_fut = { || mt.oneshot(()) };
         match future::select(rx, started::lazy(lazy_fut)).await {
             future::Either::Left((Ok(v), fut)) => {
+                info!("get connection from waiters");
                 if fut.started() {
                     let inner = Arc::downgrade(&self.inner);
                     tokio::spawn(async move {
@@ -166,7 +167,10 @@ where
                 }
                 Ok(Pooled::new(v, Arc::downgrade(&self.inner)))
             }
-            future::Either::Right((Ok(v), _)) => Ok(Pooled::new(v, Arc::downgrade(&self.inner))),
+            future::Either::Right((Ok(v), _)) => {
+                info!("get connection from created");
+                Ok(Pooled::new(v, Arc::downgrade(&self.inner)))
+            },
             future::Either::Left((Err(e), _)) => Err(e.into()),
             future::Either::Right((Err(e), _)) => Err(e.into()),
         }

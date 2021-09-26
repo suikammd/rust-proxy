@@ -1,4 +1,3 @@
-use futures::stream::ReuniteError;
 use rustls::TLSError;
 use std::io;
 use thiserror::Error;
@@ -40,6 +39,8 @@ pub enum ProxyError {
     Disconnect(#[from] io::Error),
     #[error("tls error")]
     TLSError(#[from] TLSError),
+    #[error("anyhow error")]
+    AnyhowError(#[from] anyhow::Error),
     #[error("tungstenite error")]
     TungsteniteError(#[from] tokio_tungstenite::tungstenite::Error),
     #[error("reunite read/write stream error")]

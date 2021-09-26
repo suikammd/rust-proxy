@@ -134,7 +134,6 @@ pub enum Addr {
 impl TryFrom<Addr> for Vec<SocketAddr> {
     type Error = crate::error::ProxyError;
     fn try_from(a: Addr) -> Result<Vec<SocketAddr>, Self::Error> {
-        info!("addr is {:?}", a);
         match a {
             Addr::IpV4((addr, port)) => {
                 let addr = Ipv4Addr::new(addr[0], addr[1], addr[2], addr[3]);
@@ -160,7 +159,6 @@ impl Addr {
         T: AsyncRead + Unpin,
     {
         let addr_type = stream.read_u8().await?;
-        info!("addr type is {:?}", addr_type);
         match addr_type {
             1 => {
                 let mut addr = [0u8; 4];

@@ -1,5 +1,6 @@
 use std::{pin::Pin, sync::Arc, task::Poll};
 
+use futures::future::BoxFuture;
 use http::Request;
 use pin_project::pin_project;
 use tokio::net::TcpStream;
@@ -29,8 +30,8 @@ impl<T> Service<T> for MakeWebsocketStreamConnection {
 
     type Error = tokio_tungstenite::tungstenite::Error;
 
-    type Future =
-        Pin<Box<dyn std::future::Future<Output = Result<Self::Response, Self::Error>> + Send>>;
+    type Future = BoxFuture<'static, Result<Self::Response, Self::Error>>;
+        // Pin<Box<dyn std::future::Future<Output = Result<Self::Response, Self::Error>> + Send>>;
 
     fn poll_ready(
         &mut self,

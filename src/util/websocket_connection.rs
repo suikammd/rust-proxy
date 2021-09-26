@@ -1,10 +1,12 @@
-use std::{pin::Pin, task::Poll};
+use std::{convert::TryInto, pin::Pin, task::Poll};
 
 use futures::{Sink, Stream};
-use log::info;
+use log::{debug, error, info};
 use pin_project::pin_project;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_tungstenite::{tungstenite::Message, WebSocketStream};
+
+use crate::codec::Packet;
 
 #[pin_project]
 pub struct WebSocketConnection<T>(#[pin] pub WebSocketStream<T>);
@@ -24,18 +26,26 @@ where
             .poll_next(cx)
             .map(|item| match item {
                 Some(item) => match item {
-                    Ok(msg) => match msg {
-                        tokio_tungstenite::tungstenite::Message::Binary(data) => {
-                            info!("poll_read get data {:?}", data);
-                            buf.put_slice(&data[1..]);
-                            Ok(())
+                    Ok(msg) => {
+                        let packet = Packet::to_packet(msg);
+                        match packet {
+                            Ok(packet) => match packet {
+                                Packet::Connect(_) => Ok(()),
+                                Packet::Data(data) => {
+                                    buf.put_slice(&data);
+                                    Ok(())
+                                }
+                                Packet::Close() => {
+                                    info!("get close packet, exit copy bidirectional");
+                                    Ok(())
+                                }
+                            },
+                            Err(e) => {
+                                error!("convert from message to packet error, detail is {:?}", e);
+                                Err(std::io::Error::new(std::io::ErrorKind::InvalidData, e))
+                            }
                         }
-                        tokio_tungstenite::tungstenite::Message::Close(_) => Ok(()),
-                        _ => Err(std::io::Error::new(
-                            std::io::ErrorKind::InvalidData,
-                            format!("expected binary not {:?}", msg),
-                        )),
-                    },
+                    }
                     Err(e) => Err(std::io::Error::new(
                         std::io::ErrorKind::ConnectionAborted,
                         format!(
@@ -61,7 +71,7 @@ where
         cx: &mut std::task::Context<'_>,
         buf: &[u8],
     ) -> Poll<Result<usize, std::io::Error>> {
-        info!("trying to write to websocket stream");
+        debug!("trying to write to websocket stream");
         let mut this = self.project();
         this.0.as_mut().poll_ready(cx).map(|item| match item {
             Ok(_) => {
@@ -70,7 +80,7 @@ where
                 msg.extend(buf);
                 match this.0.as_mut().start_send(Message::binary(msg)) {
                     Ok(_) => {
-                        info!("write successfully, write data len is {:?}", buf.len() + 1);
+                        debug!("write successfully, write data len is {:?}", buf.len() + 1);
                         Ok(buf.len())
                     }
                     Err(e) => Err(std::io::Error::new(
@@ -90,28 +100,40 @@ where
         self: Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
     ) -> Poll<Result<(), std::io::Error>> {
-        info!("trying flush websocket stream");
+        debug!("trying flush websocket stream");
         self.project()
             .0
             .as_mut()
             .poll_flush(cx)
             .map(|item| match item {
                 Ok(_) => Ok(()),
-                Err(e) => Err(std::io::Error::new(
-                    std::io::ErrorKind::InvalidData,
-                    format!("websocket stream poll flush fails, detail error is {:?}", e),
-                )),
+                Err(e) => {
+                    error!("flushing stream failed, detail error is {:?}", e);
+                    Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        format!("websocket stream poll flush fails, detail error is {:?}", e),
+                    ))
+                }
             })
     }
 
     fn poll_shutdown(
         self: Pin<&mut Self>,
-        _: &mut std::task::Context<'_>,
+        cx: &mut std::task::Context<'_>,
     ) -> Poll<Result<(), std::io::Error>> {
         // in order to keep websocket connection alive, we cannot actually close websocket connection
         // as in copy_bidirectional, when it finished copying, it will shutdown both streams
         // the close decision should up to us
-        Poll::Ready(Ok(()))
+        let close: Message = Packet::Close().try_into().unwrap();
+        let mut this = self.project();
+        match this.0.as_mut().start_send(close) {
+            Ok(_) => Poll::Ready(Ok(())),
+            Err(_) => {
+                println!("lalalal close");
+                let _ = this.0.as_mut().poll_close(cx);
+                Poll::Ready(Ok(()))
+            }
+        }
     }
 }
 
