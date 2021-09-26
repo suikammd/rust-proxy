@@ -31,7 +31,6 @@ impl<T> Service<T> for MakeWebsocketStreamConnection {
     type Error = tokio_tungstenite::tungstenite::Error;
 
     type Future = BoxFuture<'static, Result<Self::Response, Self::Error>>;
-        // Pin<Box<dyn std::future::Future<Output = Result<Self::Response, Self::Error>> + Send>>;
 
     fn poll_ready(
         &mut self,

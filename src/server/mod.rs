@@ -1,7 +1,7 @@
 use std::{convert::TryInto, net::SocketAddr, path::PathBuf, sync::Arc};
 
 use crate::{codec::Packet, error::{ProxyError, ProxyResult}, transport::WebSocketConnection, util::{
-        ssl::{load_certs, load_private_key},
+        {load_certs, load_private_key},
     }};
 use futures::{FutureExt, StreamExt};
 
