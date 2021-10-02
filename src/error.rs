@@ -1,9 +1,5 @@
-use rustls::TLSError;
-use std::io;
-use thiserror::Error;
-
-#[derive(Error, Debug)]
-pub enum ProxyError {
+#[derive(thiserror::Error, Debug)]
+pub enum Error {
     #[error("parse url error")]
     UrlParseError(#[from] url::ParseError),
     // socks5 error
@@ -35,10 +31,10 @@ pub enum ProxyError {
     // end
     #[error("invalid server status, (expected {expected:?}, found {found:?})")]
     InvalidServerStatus { expected: String, found: String },
-    #[error("data store disconnected `{0}`")]
-    Disconnect(#[from] io::Error),
+    #[error("std::io::Error `{0}`")]
+    IoError(#[from] std::io::Error),
     #[error("tls error")]
-    TLSError(#[from] TLSError),
+    TLSError(#[from] rustls::Error),
     #[error("anyhow error")]
     AnyhowError(#[from] anyhow::Error),
     #[error("tungstenite error")]
@@ -53,4 +49,13 @@ pub enum ProxyError {
     Unknown(String),
 }
 
-pub type ProxyResult<T> = Result<T, ProxyError>;
+impl From<Error> for std::io::Error {
+    fn from(e: Error) -> Self {
+        match e {
+            Error::IoError(e) => e,
+            _ => std::io::Error::new(std::io::ErrorKind::Other, e),
+        }
+    }
+}
+
+pub type Result<T, E = Error> = core::result::Result<T, E>;

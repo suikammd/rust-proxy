@@ -1,36 +1,39 @@
 [package]
 name = "ss"
-version = "0.1.0"
-edition = "2018"
+version = "0.2.0"
+edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-tokio = { version = "*", features = ["full"]}
-tokio-socks = "*"
-tokio-rustls = "*"
-tokio-util = { version = "*", features = ["codec"]}
-tokio-tungstenite = { version = "*", features = ["rustls-tls"] }
+tokio = { version = "1", features = ["full"] }
+tokio-socks = "0.5"
+tokio-rustls = "0.26"
+tokio-util = { version = "0.7", features = ["codec"] }
+tokio-tungstenite = { version = "0.26", default-features = false, features = [
+    "connect",
+    "__rustls-tls",
+] }
 
-futures = "0"
-futures-core = "*"
-futures-sink = "0.3.15"
-futures-util = "*"
+futures = "0.3"
+futures-core = "0.3"
+futures-sink = "0.3"
+futures-util = "0.3"
 futures-channel = "0.3"
 
-thiserror = "1"
+thiserror = "2"
 structopt = { version = "0.3", default-features = false }
 url = "2"
-bytes = "1.0.1"
-rustls-pemfile = "*"
-rustls = "*"
-log = "0.4.0"
-env_logger = "*"
-http = "*"
-anyhow = "*"
-tower = { version = "*", features = ["full"] }
+bytes = "1"
+rustls-pemfile = "2"
+rustls = "0.23"
+log = "0.4"
+env_logger = "0.11"
+http = "1"
+anyhow = "1"
+tower = { version = "0.5", features = ["full"] }
 byteorder = "1"
-pin-project = "*"
+pin-project = "1"
 
 [[bin]]
 name = "ss"

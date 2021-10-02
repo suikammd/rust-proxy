@@ -1,4 +1,4 @@
-proxy helps you bypass firewalls
+simple proxy base on rust, which helps you bypass firewalls
 
 goal:
 1. practice rust

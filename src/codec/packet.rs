@@ -1,6 +1,9 @@
 use std::{convert::TryFrom, io::Cursor};
 
-use crate::{codec::{ADDR_IPV4, ADDR_IPV6, socks5::ADDR_DOMAIN}, error::{ProxyError, ProxyResult}};
+use crate::{
+    codec::{ADDR_IPV4, ADDR_IPV6, socks5::ADDR_DOMAIN},
+    error::{Error, Result},
+};
 
 use super::Addr;
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
@@ -18,9 +21,9 @@ const PACKET_DATA: u8 = 2;
 const PACKET_CLOSE: u8 = 3;
 
 impl TryFrom<Packet> for Message {
-    type Error = ProxyError;
+    type Error = Error;
 
-    fn try_from(value: Packet) -> ProxyResult<Message> {
+    fn try_from(value: Packet) -> Result<Message> {
         match value {
             Packet::Connect(addr) => {
                 let mut msg = vec![PACKET_CONNECT];
@@ -55,9 +58,9 @@ impl TryFrom<Packet> for Message {
 }
 
 impl Packet {
-    pub fn to_packet(msg: Message) -> ProxyResult<Packet> {
+    pub fn to_packet(msg: Message) -> Result<Packet> {
         if !msg.is_binary() {
-            return Err(ProxyError::PacketNotBinaryMessage);
+            return Err(Error::PacketNotBinaryMessage);
         }
         let mut data = msg.into_data();
         let mut cursor = Cursor::new(&mut data);

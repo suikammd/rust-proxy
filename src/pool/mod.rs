@@ -170,7 +170,7 @@ where
             future::Either::Right((Ok(v), _)) => {
                 info!("get connection from created");
                 Ok(Pooled::new(v, Arc::downgrade(&self.inner)))
-            },
+            }
             future::Either::Left((Err(e), _)) => Err(e.into()),
             future::Either::Right((Err(e), _)) => Err(e.into()),
         }
@@ -262,7 +262,7 @@ mod test {
         let pool = Pool::new(10);
         let mc = MockMakeTransport;
         let mut tx = pool.get(mc).await.unwrap();
-        (&mut *tx).write(b"hello world\n").await.unwrap();
+        _ = tx.write(b"hello world\n").await.unwrap();
         drop(pool);
         drop(tx);
         tokio::time::sleep(tokio::time::Duration::from_secs(50000)).await;

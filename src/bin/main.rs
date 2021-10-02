@@ -1,6 +1,3 @@
-#[macro_use]
-extern crate log;
-
 use std::str::FromStr;
 
 use ss::{client::Client, server::Server};
@@ -48,12 +45,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let opt = Opt::from_args();
     match opt.mode {
         Mode::Server => {
-            info!("server listen on {}", opt.listen_addr);
-            let server = Server::new(opt.listen_addr, opt.fullchain_path, opt.private_key_path, opt.authorization)?;
+            log::info!("server listen on {}", opt.listen_addr);
+            let server = Server::new(
+                opt.listen_addr,
+                opt.fullchain_path,
+                opt.private_key_path,
+                opt.authorization,
+            )?;
             server.run().await
         }
         Mode::Client => {
-            info!("client listen on {}", opt.listen_addr);
+            log::info!("client listen on {}", opt.listen_addr);
             let client = Client::new(opt.listen_addr, opt.proxy_addr, opt.authorization)?;
             client.run().await
         }

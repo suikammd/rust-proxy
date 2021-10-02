@@ -1,12 +1,14 @@
 use std::{convert::TryInto, net::SocketAddr, path::PathBuf, sync::Arc};
 
-use crate::{codec::Packet, error::{ProxyError, ProxyResult}, transport::WebSocketConnection, util::{
-        {load_certs, load_private_key},
-    }};
+use crate::{
+    codec::Packet,
+    error::{Error, Result},
+    transport::WebSocketConnection,
+    util::{load_certs, load_private_key},
+};
 use futures::{FutureExt, StreamExt};
 
 use log::{error, info};
-use rustls::NoClientAuth;
 
 use tokio::{
     io::copy_bidirectional,
@@ -25,21 +27,22 @@ impl Server {
         cert_pem_path: String,
         cert_key_path: String,
         authorization: String,
-    ) -> ProxyResult<Self> {
+    ) -> Result<Self> {
         if listen_addr.is_empty()
             || cert_pem_path.is_empty()
             || cert_key_path.is_empty()
             || authorization.is_empty()
         {
-            return Err(ProxyError::EmptyParams);
+            return Err(Error::EmptyParams);
         }
         let abs_cert_path = std::fs::canonicalize(PathBuf::from(cert_pem_path.as_str()))?;
         let abs_key_path = std::fs::canonicalize(PathBuf::from(cert_key_path.as_str()))?;
         let certs = load_certs(abs_cert_path)?;
         let key = load_private_key(abs_key_path)?;
 
-        let mut server_config = rustls::ServerConfig::new(NoClientAuth::new());
-        server_config.set_single_cert(certs, key)?;
+        let server_config = rustls::ServerConfig::builder()
+            .with_no_client_auth()
+            .with_single_cert(certs, key)?;
         let acceptor = TlsAcceptor::from(Arc::new(server_config));
         Ok(Self {
             listen_addr,
@@ -68,7 +71,7 @@ async fn serve(
     inbound: TcpStream,
     authorization: Arc<String>,
     acceptor: TlsAcceptor,
-) -> ProxyResult<()> {
+) -> Result<()> {
     info!("get new connections");
     // convert to tls stream
     let inbound = acceptor.accept(inbound).await?;
@@ -107,7 +110,7 @@ async fn serve(
                             info!("packet is not binary message {:?}", msg);
                             continue;
                         }
-                        Err(e) => return Err(ProxyError::Unknown(format!("{:?}", e))),
+                        Err(e) => return Err(Error::Unknown(format!("{:?}", e))),
                     },
                     Err(_) => {
                         info!("get msg failed");
