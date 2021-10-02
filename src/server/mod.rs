@@ -1,8 +1,11 @@
 use std::{convert::TryInto, net::SocketAddr, path::PathBuf, sync::Arc};
 
-use crate::{codec::Packet, error::{ProxyError, ProxyResult}, transport::WebSocketConnection, util::{
-        {load_certs, load_private_key},
-    }};
+use crate::{
+    codec::Packet,
+    error::{ProxyError, ProxyResult},
+    transport::WebSocketConnection,
+    util::{load_certs, load_private_key},
+};
 use futures::{FutureExt, StreamExt};
 
 use log::{error, info};
