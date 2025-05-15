@@ -4,7 +4,7 @@ use futures::{Sink, Stream};
 use log::{debug, error, info};
 use pin_project::pin_project;
 use tokio::io::{AsyncRead, AsyncWrite};
-use tokio_tungstenite::{tungstenite::Message, WebSocketStream};
+use tokio_tungstenite::{WebSocketStream, tungstenite::Message};
 
 use crate::codec::Packet;
 

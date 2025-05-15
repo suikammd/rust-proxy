@@ -1,5 +1,5 @@
 use std::{
-    convert::{TryFrom},
+    convert::TryFrom,
     io::Cursor,
     net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6, ToSocketAddrs},
 };
@@ -7,11 +7,9 @@ use std::{
 use byteorder::LittleEndian;
 use bytes::{BufMut, BytesMut};
 use log::info;
-use tokio::{
-    io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufWriter},
-};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufWriter};
 
-use crate::error::{ProxyError, ProxyResult};
+use crate::error::{Error, Result};
 
 const COMMAND_CONNECT: u8 = 1;
 const COMMAND_BIND: u8 = 2;
@@ -27,12 +25,12 @@ pub enum MethodType {
 }
 
 impl TryFrom<u8> for MethodType {
-    type Error = ProxyError;
-    fn try_from(orig: u8) -> ProxyResult<Self> {
+    type Error = Error;
+    fn try_from(orig: u8) -> Result<Self> {
         match orig {
             0 => Ok(MethodType::NoAuth),
             2 => Ok(MethodType::UserPass),
-            _ => Err(ProxyError::UnsupportedMethodType),
+            _ => Err(Error::UnsupportedMethodType),
         }
     }
 }
@@ -45,28 +43,28 @@ pub enum Command {
 }
 
 impl Command {
-    pub async fn decode<T>(mut stream: T) -> ProxyResult<Self>
+    pub async fn decode<T>(mut stream: T) -> Result<Self>
     where
         T: AsyncRead + Unpin,
     {
         let mut header = [0u8; 3];
         stream.read_exact(&mut header).await?;
         if header[0] != 0x05 {
-            return Err(ProxyError::UnsupportedSocksType(header[0]));
+            return Err(Error::UnsupportedSocksType(header[0]));
         }
 
         match header[1] {
             COMMAND_CONNECT => Ok(Command::Connect),
             COMMAND_BIND => Ok(Command::Bind),
             COMMAND_UDP => Ok(Command::Udp),
-            _ => Err(ProxyError::UnsupportedCommand),
+            _ => Err(Error::UnsupportedCommand),
         }
     }
 }
 
 impl TryFrom<Command> for u8 {
-    type Error = ProxyError;
-    fn try_from(command: Command) -> ProxyResult<u8> {
+    type Error = Error;
+    fn try_from(command: Command) -> Result<u8> {
         match command {
             Command::Connect => Ok(COMMAND_CONNECT),
             Command::Bind => Ok(COMMAND_BIND),
@@ -90,7 +88,7 @@ pub enum RepCode {
 }
 
 impl TryFrom<u8> for RepCode {
-    type Error = ProxyError;
+    type Error = Error;
     fn try_from(orig: u8) -> Result<Self, Self::Error> {
         match orig {
             0 => Ok(RepCode::Success),
@@ -102,7 +100,7 @@ impl TryFrom<u8> for RepCode {
             6 => Ok(RepCode::TTLTimeout),
             7 => Ok(RepCode::UnsupportedCommand),
             8 => Ok(RepCode::UnsupportedAddrType),
-            _ => Err(ProxyError::InvalidRepCode),
+            _ => Err(Error::InvalidRepCode),
         }
     }
 }
@@ -132,7 +130,7 @@ pub enum Addr {
 }
 
 impl TryFrom<Addr> for Vec<SocketAddr> {
-    type Error = crate::error::ProxyError;
+    type Error = crate::error::Error;
     fn try_from(a: Addr) -> Result<Vec<SocketAddr>, Self::Error> {
         match a {
             Addr::IpV4((addr, port)) => {
@@ -154,7 +152,7 @@ impl TryFrom<Addr> for Vec<SocketAddr> {
 }
 
 impl Addr {
-    pub async fn decode<T>(mut stream: T) -> ProxyResult<Self>
+    pub async fn decode<T>(mut stream: T) -> Result<Self>
     where
         T: AsyncRead + Unpin,
     {
@@ -170,7 +168,7 @@ impl Addr {
             3 => {
                 let addr_len = stream.read_u8().await?;
                 let mut addr = [0u8; 255];
-                stream.read(&mut addr[..(addr_len as usize)]).await?;
+                _ = stream.read(&mut addr[..(addr_len as usize)]).await?;
                 let port = stream.read_u16().await?;
                 Ok(Addr::Domain((
                     std::str::from_utf8(&addr[..(addr_len as usize)])
@@ -185,11 +183,11 @@ impl Addr {
                 let port = stream.read_u16().await?;
                 Ok(Addr::IpV6((addr, port)))
             }
-            _ => Err(ProxyError::UnsupportedAddrType),
+            _ => Err(Error::UnsupportedAddrType),
         }
     }
 
-    pub async fn encode<T>(&self, mut stream: BufWriter<T>) -> ProxyResult<()>
+    pub async fn encode<T>(&self, mut stream: BufWriter<T>) -> Result<()>
     where
         T: AsyncWrite + Unpin,
     {
@@ -197,17 +195,17 @@ impl Addr {
         match self {
             Addr::IpV4((addr, port)) => {
                 stream.write_u8(0x01).await?;
-                stream.write(addr).await?;
+                _ = stream.write(addr).await?;
                 addr_port = *port;
             }
             Addr::Domain((addr, port)) => {
-                stream.write(&[0x03, addr.len() as u8]).await?;
-                stream.write(addr.as_bytes()).await?;
+                _ = stream.write(&[0x03, addr.len() as u8]).await?;
+                _ = stream.write(addr.as_bytes()).await?;
                 addr_port = *port;
             }
             Addr::IpV6((addr, port)) => {
-                stream.write(&[0x04]).await?;
-                stream.write(addr).await?;
+                _ = stream.write(&[0x04]).await?;
+                _ = stream.write(addr).await?;
                 addr_port = *port;
             }
         }
@@ -236,7 +234,7 @@ impl Addr {
         }
     }
 
-    pub fn from_bytes(bytes: &[u8]) -> ProxyResult<Addr> {
+    pub fn from_bytes(bytes: &[u8]) -> Result<Addr> {
         // info!("connect packets {:?}", bytes);
         // let addr_type = bytes[0] & 0x0f;
         // let cmd = bytes[0] >> 4;
@@ -251,26 +249,25 @@ impl Addr {
         let addr_type = byteorder::ReadBytesExt::read_u8(&mut cursor)?;
         let port = byteorder::ReadBytesExt::read_u16::<LittleEndian>(&mut cursor)?;
 
-        let addr: Addr;
-        match addr_type {
+        let addr: Addr = match addr_type {
             1 => {
                 assert!(bytes.len() == 7);
                 let mut ipv4 = [0; 4];
                 std::io::Read::read_exact(&mut cursor, &mut ipv4)?;
-                addr = Addr::IpV4((ipv4, port));
+                Addr::IpV4((ipv4, port))
             }
             3 => {
                 let domain = String::from_utf8_lossy(&bytes[cursor.position() as _..]);
-                addr = Addr::Domain((domain.into(), port));
+                Addr::Domain((domain.into(), port))
             }
             4 => {
                 assert!(bytes.len() == 19);
                 let mut ipv6 = [0; 16];
                 std::io::Read::read_exact(&mut cursor, &mut ipv6)?;
-                addr = Addr::IpV6((ipv6, port));
+                Addr::IpV6((ipv6, port))
             }
             _ => unreachable!(),
-        }
+        };
         info!("addr is {:?}", addr);
         Ok(addr)
     }

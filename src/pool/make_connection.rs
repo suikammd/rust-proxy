@@ -1,10 +1,10 @@
-use std::{pin::Pin, sync::Arc, task::Poll};
+use std::{sync::Arc, task::Poll};
 
 use futures::future::BoxFuture;
 use http::Request;
 use pin_project::pin_project;
 use tokio::net::TcpStream;
-use tokio_tungstenite::{connect_async, MaybeTlsStream, WebSocketStream};
+use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async};
 use tower::Service;
 
 #[pin_project]

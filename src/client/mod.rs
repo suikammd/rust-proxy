@@ -1,14 +1,14 @@
 use std::{convert::TryInto, sync::Arc};
 
-use futures::{FutureExt};
+use futures::FutureExt;
 
 use futures::SinkExt;
 use log::{error, info};
 use tokio::{
-    io::{copy_bidirectional, AsyncReadExt, AsyncWriteExt, BufReader, BufWriter},
+    io::{AsyncReadExt, AsyncWriteExt, BufReader, BufWriter, copy_bidirectional},
     net::{TcpListener, TcpStream},
 };
-use tokio_tungstenite::{tungstenite::Message};
+use tokio_tungstenite::tungstenite::Message;
 
 use crate::pool::Pool;
 use crate::transport::WebSocketConnection;
@@ -20,7 +20,7 @@ use crate::{
     codec::{
         Addr, {Command, RepCode},
     },
-    error::{ProxyError, ProxyResult},
+    error::{Error, Result},
 };
 
 pub struct Client {
@@ -29,13 +29,9 @@ pub struct Client {
 }
 
 impl Client {
-    pub fn new(
-        listen_addr: String,
-        proxy_addr: String,
-        authorization: String,
-    ) -> ProxyResult<Self> {
+    pub fn new(listen_addr: String, proxy_addr: String, authorization: String) -> Result<Self> {
         if proxy_addr.is_empty() {
-            return Err(ProxyError::EmptyParams);
+            return Err(Error::EmptyParams);
         }
         Ok(Self {
             listen_addr,
@@ -64,7 +60,7 @@ impl Client {
         mut inbound: TcpStream,
         mt: MakeWebsocketStreamConnection,
         pool: Pool<WebSocketOutboundConnection>,
-    ) -> ProxyResult<()> {
+    ) -> Result<()> {
         info!("Get new connections");
 
         // socks5 handshake: decide which method to use
@@ -86,7 +82,7 @@ impl Client {
         Ok(())
     }
 
-    async fn socks5_handshake(stream: &mut TcpStream) -> ProxyResult<(Command, Addr)> {
+    async fn socks5_handshake(stream: &mut TcpStream) -> Result<(Command, Addr)> {
         let (input_read, input_write) = stream.split();
         let mut input_read = BufReader::new(input_read);
         let mut input_write = BufWriter::new(input_write);
@@ -96,7 +92,7 @@ impl Client {
         let socks_type = header[0];
         // validate socks type
         if socks_type != 0x05 {
-            return Err(ProxyError::UnsupportedSocksType(header[0]));
+            return Err(Error::UnsupportedSocksType(header[0]));
         }
         let method_len = header[1];
         let mut methods = vec![0u8; method_len as usize];
@@ -106,7 +102,7 @@ impl Client {
         // only support no auth for now
         let support = methods.into_iter().any(|method| method == 0);
         if !support {
-            return Err(ProxyError::UnsupportedMethodType);
+            return Err(Error::UnsupportedMethodType);
         }
 
         input_write.write_all(&[0x05, 0x00]).await?;
